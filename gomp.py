@@ -32,6 +32,7 @@ from isaacgym import gymapi
 from isaacgym import gymutil
 from PIL import Image as im
 from datetime import datetime
+from autolab_core import rigid_transformations
 
 # acquire the gym interface
 gym = gymapi.acquire_gym()
@@ -42,7 +43,6 @@ args = gymutil.parse_arguments(
     headless=True,
     custom_parameters=[],
 )
-
 
 # get default params
 sim_params = gymapi.SimParams()
@@ -84,10 +84,8 @@ num_per_row = int(sqrt(num_envs))
 env_lower = gymapi.Vec3(-spacing, 0.0, -spacing)
 env_upper = gymapi.Vec3(spacing, spacing, spacing)
 
-# Load ball assets
 asset_root = "../../assets"
-asset_file = "urdf/ball.urdf"
-asset = gym.load_asset(sim, asset_root, asset_file, gymapi.AssetOptions())
+default_options = gymapi.AssetOptions()
 
 # load bin asset
 bin_asset_file = "urdf/tray/traybox.urdf"
@@ -96,18 +94,52 @@ bin_asset = gym.load_asset(sim, asset_root, bin_asset_file)
 bin_pose = gymapi.Transform()
 bin_pose.r = gymapi.Quat(-0.707107, 0.0, 0.0, 0.707107)
 
+# Create box asset
+box = gym.create_box(sim, 0.075, 0.015, 0.025, default_options)
+
+kuka_asset_file = "urdf/kuka_allegro_description/kuka_allegro.urdf"
+
+robot_options = gymapi.AssetOptions()
+robot_options.fix_base_link = False
+robot_options.flip_visual_attachments = False
+robot_options.collapse_fixed_joints = True
+robot_options.disable_gravity = False
+
+print("Loading asset '%s' from '%s'" % (kuka_asset_file, asset_root))
+kuka_asset = gym.load_asset(sim, asset_root, kuka_asset_file, robot_options)
+kuka_attractors = [
+    "iiwa7_link_7"
+]  # , "thumb_link_3", "index_link_3", "middle_link_3", "ring_link_3"]
+attractors_offsets = [
+    gymapi.Transform(),
+    gymapi.Transform(),
+    gymapi.Transform(),
+    gymapi.Transform(),
+    gymapi.Transform(),
+]
+
+# Coordinates to offset attractors to tips of fingers
+# thumb
+attractors_offsets[1].p = gymapi.Vec3(0.07, 0.01, 0)
+attractors_offsets[1].r = gymapi.Quat(0.0, 0.0, 0.216433, 0.976297)
+# index, middle and ring
+for i in range(2, 5):
+    attractors_offsets[i].p = gymapi.Vec3(0.055, 0.015, 0)
+    attractors_offsets[i].r = gymapi.Quat(0.0, 0.0, 0.216433, 0.976297)
+
+
 # Load textures from file. Loads all .jpgs from the specified directory as textures
-texture_files = os.listdir("../../assets/textures/")
-texture_handles = []
-for file in texture_files:
-    if file.endswith(".jpg"):
-        h = gym.create_texture_from_file(
-            sim, os.path.join("../../assets/textures/", file)
-        )
-        if h == gymapi.INVALID_HANDLE:
-            print("Couldn't load texture %s" % file)
-        else:
-            texture_handles.append(h)
+# texture_files = os.listdir("../../assets/textures/")
+# texture_handles = []
+# for file in texture_files:
+#     if file.endswith(".jpg"):
+#         h = gym.create_texture_from_file(
+#             sim, os.path.join("../../assets/textures/", file)
+#         )
+#         if h == gymapi.INVALID_HANDLE:
+#             print("Couldn't load texture %s" % file)
+#         else:
+#             texture_handles.append(h)
 
 
 # Create environments
@@ -117,65 +149,85 @@ envs = []
 
 # create environments
 for i in range(num_envs):
+    actor_handles.append([])
+
     # create env
     env = gym.create_env(sim, env_lower, env_upper, num_per_row)
     envs.append(env)
 
-    # generate random bright color
+    # generate random dark color
+    c = 0.2 * np.random.random(3)
+    dark_color = gymapi.Vec3(c[0], c[1], c[2])
+
+    bin = gym.create_actor(env, bin_asset, bin_pose, "bin", 0, 0)
+    # bin_props = gym.get_actor_rigid_shape_properties(env, bin)
+    # bin_props[0].restitution = 1
+    # bin_props[0].compliance = 0.5
+    # gym.set_actor_rigid_shape_properties(env, bin, bin_props)
+    gym.set_rigid_body_color(env, bin, 0, gymapi.MESH_VISUAL_AND_COLLISION, dark_color)
+
+    # generate random dark color
     c = 0.5 + 0.5 * np.random.random(3)
     color = gymapi.Vec3(c[0], c[1], c[2])
 
-    # create ball pyramid
+    # robot hand for scale
     pose = gymapi.Transform()
-    pose.r = gymapi.Quat(0, 0, 0, 1)
-    n = 4
-    radius = 0.2
-    ball_spacing = 2.5 * radius
-    min_coord = -0.5 * (n - 1) * ball_spacing
-    y = min_coord + 1
-    bin_handle = gym.create_actor(
-        env,
-        bin_asset,
-        bin_pose,
-        "bin",
-        0,
-        0,
-    )
-    gym.set_actor_scale(env, bin_handle, 4)
-    gym.set_rigid_body_color(
-        env,
-        bin_handle,
-        0,
-        gymapi.MESH_VISUAL_AND_COLLISION,
-        gymapi.Vec3(0.24, 0.35, 0.8),
-    )
-    gym.set_rigid_body_segmentation_id(env, bin_handle, 0, 0)
-    while n > 0:
-        z = min_coord
-        for j in range(n):
-            x = min_coord
-            for k in range(n):
-                if np.random.random() > 0.5:
-                    pose.p = gymapi.Vec3(x, 1.5 + y, z)
-                    # Set up collision filtering.
-                    # Everything should collide.
-                    # Put all actors in the same group, with filtering mask set to 0 (no filtering).
-                    collision_group = 0
-                    collision_filter = 0
+    pose.p = gymapi.Vec3(0, 1, -0.5)
+    # gym.create_actor(env, kuka_asset, pose, None, 0, 0)
 
-                    ahandle = gym.create_actor(
-                        env, asset, pose, None, collision_group, collision_filter
-                    )
-                    gym.set_rigid_body_color(
-                        env, ahandle, 0, gymapi.MESH_VISUAL_AND_COLLISION, color
-                    )
-                    gym.set_rigid_body_segmentation_id(env, ahandle, 0, 1)
-
-                x += ball_spacing
-            z += ball_spacing
-        y += ball_spacing
-        n -= 1
-        min_coord = -0.5 * (n - 1) * ball_spacing
+    # create jenga tower
+    pose = gymapi.Transform()
+    pose.p = gymapi.Vec3(0, 0.01, 0)
+    for level in range(10):
+        pose.p.y += 0.025
+        if level % 2 == 0:
+            pose.r = gymapi.Quat(0, 0, 0, 1)
+            pose.p.x = 0
+            pose.p.z = 0
+            print(pose.p)
+            middle = gym.create_actor(env, box, pose, None, 0, 0)
+            gym.set_rigid_body_color(
+                env, middle, 0, gymapi.MESH_VISUAL_AND_COLLISION, color
+            )
+            pose.p.x = 0
+            pose.p.z = 0.025
+            print(pose.p)
+            left = gym.create_actor(env, box, pose, None, 0, 0)
+            gym.set_rigid_body_color(
+                env, left, 0, gymapi.MESH_VISUAL_AND_COLLISION, color
+            )
+            pose.p.x = 0
+            pose.p.z = -0.025
+            print(pose.p)
+            right = gym.create_actor(env, box, pose, None, 0, 0)
+            gym.set_rigid_body_color(
+                env, right, 0, gymapi.MESH_VISUAL_AND_COLLISION, color
+            )
+            actor_handles[i].extend([left, middle, right])
+        else:
+            pose.r = gymapi.Quat.from_euler_zyx(0, np.pi / 2, 0)
+            pose.p.x = 0
+            pose.p.z = 0
+            print(pose.p)
+            middle = gym.create_actor(env, box, pose, None, 0, 0)
+            gym.set_rigid_body_color(
+                env, middle, 0, gymapi.MESH_VISUAL_AND_COLLISION, color
+            )
+            pose.p.x = 0.025
+            pose.p.z = 0
+            print(pose.p)
+            left = gym.create_actor(env, box, pose, None, 0, 0)
+            gym.set_rigid_body_color(
+                env, left, 0, gymapi.MESH_VISUAL_AND_COLLISION, color
+            )
+            pose.p.x = -0.025
+            pose.p.z = 0
+            print(pose.p)
+            right = gym.create_actor(env, box, pose, None, 0, 0)
+            gym.set_rigid_body_color(
+                env, right, 0, gymapi.MESH_VISUAL_AND_COLLISION, color
+            )
+            actor_handles[i].extend([left, middle, right])
 
     # Create 2 cameras in each environment, one which views the origin of the environment
     # and one which is attached to the 0th body of the 0th actor and moves with that actor
@@ -187,8 +239,8 @@ for i in range(num_envs):
     # Set a fixed position and look-target for the first camera
     # position and target location are in the coordinate frame of the environment
     h1 = gym.create_camera_sensor(envs[i], camera_properties)
-    camera_position = gymapi.Vec3(0, 4, 0)
-    camera_target = gymapi.Vec3(0.00001, 0, 0.00001)
+    camera_position = gymapi.Vec3(0, 0.5, 0)
+    camera_target = gymapi.Vec3(0.00001, 0, 0)
     # gym.set_light_parameters(
     #     sim, 0, gymapi.Vec3(1, 1, 1), gymapi.Vec3(1, 1, 1), gymapi.Vec3(1, -1, 0)
     # )
@@ -197,7 +249,7 @@ for i in range(num_envs):
     camera_handles[i].append(h1)
 
     h2 = gym.create_camera_sensor(envs[i], camera_properties)
-    camera_position = gymapi.Vec3(4, 4, 4)
+    camera_position = gymapi.Vec3(0.3, 0.3, 0.3)
     camera_target = gymapi.Vec3(0, 0, 0)
     gym.set_camera_location(h2, envs[i], camera_position, camera_target)
     camera_handles[i].append(h2)
@@ -223,26 +275,6 @@ for i in range(num_envs):
     # camera_handles[i].append(h2)
 
 
-# Assign textures to each actor by assigning a different texture to each rigid body within each actor. With
-# only balls, each actor has only one rigit body
-textures_applied = 0
-for i in range(num_envs):
-    actor_count = gym.get_actor_count(envs[i])
-    for j in range(actor_count):
-        actor_handle = gym.get_actor_handle(envs[i], j)
-        num_bodies = gym.get_actor_rigid_body_count(envs[i], actor_handle)
-        for b in range(num_bodies):
-            texture_index = np.mod(textures_applied, len(texture_handles))
-            gym.set_rigid_body_texture(
-                envs[i],
-                actor_handle,
-                b,
-                gymapi.MESH_VISUAL_AND_COLLISION,
-                texture_handles[texture_index],
-            )
-            textures_applied = textures_applied + 1
-
-
 if os.path.exists("graphics_images"):
     import shutil
 
@@ -250,6 +282,7 @@ if os.path.exists("graphics_images"):
     os.mkdir("graphics_images")
 frame_count = 0
 
+sideways_frame = -1
 # Main simulation loop
 while True:
     # step the physics simulation
@@ -262,7 +295,7 @@ while True:
     # render the camera sensors
     gym.render_all_camera_sensors(sim)
 
-    if frame_count > -1 and np.mod(frame_count, 200) == 0:
+    if frame_count > -1 and np.mod(frame_count, 1) == 0:
         for i in range(num_envs):
             for j in range(0, 2):
                 # The gym utility to write images to disk is recommended only for RGB images.
@@ -275,6 +308,33 @@ while True:
                     rgb_filename,
                 )
 
+    if not args.headless:
+        # render the viewer
+        gym.draw_viewer(viewer, sim, True)
+
+        # Wait for dt to elapse in real time to sync viewer with
+        # simulation rate. Not necessary in headless.
+        gym.sync_frame_time(sim)
+
+        # Check for exit condition - user closed the viewer window
+        if gym.query_viewer_has_closed(viewer):
+            break
+
+    if frame_count > 150:
+        if frame_count == sideways_frame:
+            gym.set_rigid_linear_velocity(
+                envs[i], actor_handles[i][0], gymapi.Vec3(0.0, 0.0, 2.0)
+            )
+        elif sideways_frame < 0:
+            for i in range(num_envs):
+                gym.set_rigid_linear_velocity(
+                    envs[i], actor_handles[i][0], gymapi.Vec3(0.0, 1.0, 0.0)
+                )
+            sideways_frame = frame_count + 50
+
+    if frame_count > 250:
+        for i in range(num_envs):
+            for j in range(0, 2):
                 # Retrieve image data directly. Use this for Depth, Segmentation, and Optical Flow images
                 # Here we retrieve a depth image, normalize it to be visible in an
                 # output image and then write it to disk using Pillow
@@ -299,20 +359,7 @@ while True:
                 normalized_depth_image.save(
                     f"graphics_images/depth_env{i}_cam{j}_frame{str(frame_count).zfill(4)}.jpg"
                 )
-
-    if not args.headless:
-        # render the viewer
-        gym.draw_viewer(viewer, sim, True)
-
-        # Wait for dt to elapse in real time to sync viewer with
-        # simulation rate. Not necessary in headless.
-        gym.sync_frame_time(sim)
-
-        # Check for exit condition - user closed the viewer window
-        if gym.query_viewer_has_closed(viewer):
-            break
-        if frame_count > 1500:
-            break
+        break
 
     frame_count = frame_count + 1
 
