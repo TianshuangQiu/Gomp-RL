@@ -34,6 +34,9 @@ from PIL import Image as im
 from datetime import datetime
 from autolab_core import rigid_transformations
 
+# from isaacgym import gymtorch
+# import torch
+
 # acquire the gym interface
 gym = gymapi.acquire_gym()
 
@@ -43,7 +46,7 @@ args = gymutil.parse_arguments(
     headless=True,
     custom_parameters=[],
 )
-
+pdb.set_trace()
 # get default params
 sim_params = gymapi.SimParams()
 if args.physics_engine == gymapi.SIM_FLEX:
@@ -85,66 +88,34 @@ env_lower = gymapi.Vec3(-spacing, 0.0, -spacing)
 env_upper = gymapi.Vec3(spacing, spacing, spacing)
 
 asset_root = "../../assets"
-default_options = gymapi.AssetOptions()
+bin_options = gymapi.AssetOptions()
+bin_options.use_mesh_materials = True
+bin_options.vhacd_enabled = True
 
 # load bin asset
-bin_asset_file = "urdf/tray/traybox.urdf"
+
+# custom bin
+# bin_asset_file = "urdf/custom/test_bin.urdf"
+# print("Loading asset '%s' from '%s'" % (bin_asset_file, asset_root))
+# bin_asset = gym.load_asset(sim, asset_root, bin_asset_file, bin_options)
+# bin_pose = gymapi.Transform()
+# bin_pose.p = gymapi.Vec3(-0.18, 0.0, 0.3)
+# bin_pose.r = gymapi.Quat.from_euler_zyx(-np.pi / 2, 0, 0)
+
+bin_asset_file = "urdf/custom/test_bin.urdf"
 print("Loading asset '%s' from '%s'" % (bin_asset_file, asset_root))
-bin_asset = gym.load_asset(sim, asset_root, bin_asset_file)
+bin_asset = gym.load_asset(sim, asset_root, bin_asset_file, bin_options)
 bin_pose = gymapi.Transform()
-bin_pose.r = gymapi.Quat(-0.707107, 0.0, 0.0, 0.707107)
-
+bin_pose.p = gymapi.Vec3(-0.18, 0.0, 0.3)
+bin_pose.r = gymapi.Quat.from_euler_zyx(-np.pi / 2, 0, 0)
 # Create box asset
-box = gym.create_box(sim, 0.075, 0.015, 0.025, default_options)
-
-kuka_asset_file = "urdf/kuka_allegro_description/kuka_allegro.urdf"
-
-robot_options = gymapi.AssetOptions()
-robot_options.fix_base_link = False
-robot_options.flip_visual_attachments = False
-robot_options.collapse_fixed_joints = True
-robot_options.disable_gravity = False
-
-print("Loading asset '%s' from '%s'" % (kuka_asset_file, asset_root))
-kuka_asset = gym.load_asset(sim, asset_root, kuka_asset_file, robot_options)
-kuka_attractors = [
-    "iiwa7_link_7"
-]  # , "thumb_link_3", "index_link_3", "middle_link_3", "ring_link_3"]
-attractors_offsets = [
-    gymapi.Transform(),
-    gymapi.Transform(),
-    gymapi.Transform(),
-    gymapi.Transform(),
-    gymapi.Transform(),
-]
-
-# Coordinates to offset attractors to tips of fingers
-# thumb
-attractors_offsets[1].p = gymapi.Vec3(0.07, 0.01, 0)
-attractors_offsets[1].r = gymapi.Quat(0.0, 0.0, 0.216433, 0.976297)
-# index, middle and ring
-for i in range(2, 5):
-    attractors_offsets[i].p = gymapi.Vec3(0.055, 0.015, 0)
-    attractors_offsets[i].r = gymapi.Quat(0.0, 0.0, 0.216433, 0.976297)
-
-
-# Load textures from file. Loads all .jpgs from the specified directory as textures
-# texture_files = os.listdir("../../assets/textures/")
-# texture_handles = []
-# for file in texture_files:
-#     if file.endswith(".jpg"):
-#         h = gym.create_texture_from_file(
-#             sim, os.path.join("../../assets/textures/", file)
-#         )
-#         if h == gymapi.INVALID_HANDLE:
-#             print("Couldn't load texture %s" % file)
-#         else:
-#             texture_handles.append(h)
+box = gym.create_box(sim, 0.15, 0.03, 0.05, bin_options)
 
 
 # Create environments
 actor_handles = [[]]
 camera_handles = [[]]
+bin_handles = []
 envs = []
 
 # create environments
@@ -156,50 +127,64 @@ for i in range(num_envs):
     envs.append(env)
 
     # generate random dark color
-    c = 0.2 * np.random.random(3)
+    c = 0.5 * np.random.random(3)
     dark_color = gymapi.Vec3(c[0], c[1], c[2])
 
-    bin = gym.create_actor(env, bin_asset, bin_pose, "bin", 0, 0)
-    # bin_props = gym.get_actor_rigid_shape_properties(env, bin)
-    # bin_props[0].restitution = 1
-    # bin_props[0].compliance = 0.5
-    # gym.set_actor_rigid_shape_properties(env, bin, bin_props)
-    gym.set_rigid_body_color(env, bin, 0, gymapi.MESH_VISUAL_AND_COLLISION, dark_color)
+    bin_handle = gym.create_actor(env, bin_asset, bin_pose, "bin", 0, 0)
+    bin_handles.append(bin_handle)
+    bin_props = gym.get_actor_rigid_shape_properties(env, bin_handle)
+    bin_props[0].restitution = 1
+    bin_props[0].compliance = 0.5
+    gym.set_actor_rigid_shape_properties(env, bin_handle, bin_props)
+    gym.set_rigid_body_color(
+        env, bin_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, dark_color
+    )
 
     # generate random dark color
     c = 0.5 + 0.5 * np.random.random(3)
     color = gymapi.Vec3(c[0], c[1], c[2])
 
     # robot hand for scale
-    pose = gymapi.Transform()
-    pose.p = gymapi.Vec3(0, 1, -0.5)
+    # pose = gymapi.Transform()
+    # pose.p = gymapi.Vec3(0, 1, -0.5)
     # gym.create_actor(env, kuka_asset, pose, None, 0, 0)
 
     # create jenga tower
     pose = gymapi.Transform()
-    pose.p = gymapi.Vec3(0, 0.01, 0)
-    for level in range(10):
-        pose.p.y += 0.025
+    pose.p = gymapi.Vec3(0, 0.05, 0)
+    for level in range(100):
+        pose.p.y += 0.04
         if level % 2 == 0:
             pose.r = gymapi.Quat(0, 0, 0, 1)
             pose.p.x = 0
             pose.p.z = 0
-            print(pose.p)
             middle = gym.create_actor(env, box, pose, None, 0, 0)
             gym.set_rigid_body_color(
                 env, middle, 0, gymapi.MESH_VISUAL_AND_COLLISION, color
             )
+            box_props = gym.get_actor_rigid_shape_properties(env, middle)
+            box_props[0].restitution = 0.1
+            box_props[0].compliance = 0.1
+            gym.set_actor_rigid_shape_properties(env, middle, box_props)
+
             pose.p.x = 0
-            pose.p.z = 0.025
-            print(pose.p)
+            pose.p.z = 0.05
             left = gym.create_actor(env, box, pose, None, 0, 0)
             gym.set_rigid_body_color(
                 env, left, 0, gymapi.MESH_VISUAL_AND_COLLISION, color
             )
+            box_props = gym.get_actor_rigid_shape_properties(env, left)
+            box_props[0].restitution = 0.1
+            box_props[0].compliance = 0.1
+            gym.set_actor_rigid_shape_properties(env, left, box_props)
+
             pose.p.x = 0
-            pose.p.z = -0.025
-            print(pose.p)
+            pose.p.z = -0.05
             right = gym.create_actor(env, box, pose, None, 0, 0)
+            box_props = gym.get_actor_rigid_shape_properties(env, right)
+            box_props[0].restitution = 0.1
+            box_props[0].compliance = 0.1
+            gym.set_actor_rigid_shape_properties(env, right, box_props)
             gym.set_rigid_body_color(
                 env, right, 0, gymapi.MESH_VISUAL_AND_COLLISION, color
             )
@@ -208,25 +193,36 @@ for i in range(num_envs):
             pose.r = gymapi.Quat.from_euler_zyx(0, np.pi / 2, 0)
             pose.p.x = 0
             pose.p.z = 0
-            print(pose.p)
             middle = gym.create_actor(env, box, pose, None, 0, 0)
+            box_props = gym.get_actor_rigid_shape_properties(env, middle)
+            box_props[0].restitution = 0.1
+            box_props[0].compliance = 0.1
+            gym.set_actor_rigid_shape_properties(env, middle, box_props)
             gym.set_rigid_body_color(
                 env, middle, 0, gymapi.MESH_VISUAL_AND_COLLISION, color
             )
-            pose.p.x = 0.025
+
+            pose.p.x = 0.05
             pose.p.z = 0
-            print(pose.p)
             left = gym.create_actor(env, box, pose, None, 0, 0)
             gym.set_rigid_body_color(
                 env, left, 0, gymapi.MESH_VISUAL_AND_COLLISION, color
             )
-            pose.p.x = -0.025
+            box_props = gym.get_actor_rigid_shape_properties(env, left)
+            box_props[0].restitution = 0.1
+            box_props[0].compliance = 0.1
+            gym.set_actor_rigid_shape_properties(env, left, box_props)
+
+            pose.p.x = -0.05
             pose.p.z = 0
-            print(pose.p)
             right = gym.create_actor(env, box, pose, None, 0, 0)
             gym.set_rigid_body_color(
                 env, right, 0, gymapi.MESH_VISUAL_AND_COLLISION, color
             )
+            box_props = gym.get_actor_rigid_shape_properties(env, right)
+            box_props[0].restitution = 0.1
+            box_props[0].compliance = 0.1
+            gym.set_actor_rigid_shape_properties(env, right, box_props)
             actor_handles[i].extend([left, middle, right])
 
     # Create 2 cameras in each environment, one which views the origin of the environment
@@ -239,7 +235,7 @@ for i in range(num_envs):
     # Set a fixed position and look-target for the first camera
     # position and target location are in the coordinate frame of the environment
     h1 = gym.create_camera_sensor(envs[i], camera_properties)
-    camera_position = gymapi.Vec3(0, 0.5, 0)
+    camera_position = gymapi.Vec3(0, 1, 0)
     camera_target = gymapi.Vec3(0.00001, 0, 0)
     # gym.set_light_parameters(
     #     sim, 0, gymapi.Vec3(1, 1, 1), gymapi.Vec3(1, 1, 1), gymapi.Vec3(1, -1, 0)
@@ -249,7 +245,7 @@ for i in range(num_envs):
     camera_handles[i].append(h1)
 
     h2 = gym.create_camera_sensor(envs[i], camera_properties)
-    camera_position = gymapi.Vec3(0.3, 0.3, 0.3)
+    camera_position = gymapi.Vec3(0.9, 0.9, 0.9)
     camera_target = gymapi.Vec3(0, 0, 0)
     gym.set_camera_location(h2, envs[i], camera_position, camera_target)
     camera_handles[i].append(h2)
@@ -275,6 +271,13 @@ for i in range(num_envs):
     # camera_handles[i].append(h2)
 
 
+forces = np.zeros(shape=(num_envs, 1, 3))
+forces[:2, 0, 1] = 50
+forces[2:, 0, 0] = 50
+
+force_positions = np.repeat([[0, 0.2, 0]], num_envs, axis=0).reshape(num_envs, 1, 3)
+# pdb.set_trace()
+
 if os.path.exists("graphics_images"):
     import shutil
 
@@ -297,9 +300,42 @@ while True:
 
     if frame_count > -1 and np.mod(frame_count, 1) == 0:
         for i in range(num_envs):
-            for j in range(0, 2):
+            state = gym.get_actor_rigid_body_states(
+                envs[i], bin_handles[i], gymapi.STATE_ALL
+            )
+            original_position = state["pose"]["p"].copy()
+            state["pose"]["p"].fill((5, 5, 5))
+            if not gym.set_actor_rigid_body_states(
+                envs[i], bin_handles[i], state, gymapi.STATE_ALL
+            ):
+                pdb.set_trace()
+            # communicate physics to graphics system
+            gym.step_graphics(sim)
+            # render the camera sensors
+            gym.render_all_camera_sensors(sim)
+            for j in range(1, 2):
                 # The gym utility to write images to disk is recommended only for RGB images.
                 rgb_filename = f"graphics_images/rgb_env{i}_cam{j}_frame{str(frame_count).zfill(4)}.png"
+                gym.write_camera_image_to_file(
+                    sim,
+                    envs[i],
+                    camera_handles[i][j],
+                    gymapi.IMAGE_COLOR,
+                    rgb_filename,
+                )
+
+            state["pose"]["p"].fill(original_position)
+            if not gym.set_actor_rigid_body_states(
+                envs[i], bin_handles[i], state, gymapi.STATE_ALL
+            ):
+                pdb.set_trace()
+
+            gym.step_graphics(sim)
+            # render the camera sensors
+            gym.render_all_camera_sensors(sim)
+            for j in range(1, 2):
+                # The gym utility to write images to disk is recommended only for RGB images.
+                rgb_filename = f"graphics_images/rrgb_env{i}_cam{j}_frame{str(frame_count).zfill(4)}.png"
                 gym.write_camera_image_to_file(
                     sim,
                     envs[i],
@@ -322,14 +358,20 @@ while True:
 
     if frame_count > 150:
         if frame_count == sideways_frame:
-            gym.set_rigid_linear_velocity(
-                envs[i], actor_handles[i][0], gymapi.Vec3(0.0, 0.0, 2.0)
-            )
+            pass
+
         elif sideways_frame < 0:
-            for i in range(num_envs):
-                gym.set_rigid_linear_velocity(
-                    envs[i], actor_handles[i][0], gymapi.Vec3(0.0, 1.0, 0.0)
-                )
+            # pdb.set_trace()
+            for i, env in enumerate(envs):
+                for a in actor_handles[i]:
+                    gym.apply_body_force_at_pos(
+                        env,
+                        a,
+                        gymapi.Vec3(0, 5, 0),
+                        gymapi.Vec3(0, 0.2, 0),
+                        gymapi.ENV_SPACE,
+                    )
+
             sideways_frame = frame_count + 50
 
     if frame_count > 250:
