@@ -34,9 +34,17 @@ from PIL import Image as im
 from datetime import datetime
 from autolab_core.rigid_transformations import RigidTransform
 import shutil
+import json
 
-# from isaacgym import gymtorch
-# import torch
+
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return json.JSONEncoder.default(self, obj)
+
+
+current_run_dict = {"time": str(datetime.now())}
 
 # acquire the gym interface
 gym = gymapi.acquire_gym()
@@ -82,27 +90,31 @@ if not args.headless:
         raise ValueError("*** Failed to create viewer")
 
 # set up the env grid
-num_envs = 4
-spacing = 2.0
+num_envs = 1
+spacing = 2.5
 num_per_row = int(sqrt(num_envs))
 env_lower = gymapi.Vec3(-spacing, 0.0, -spacing)
 env_upper = gymapi.Vec3(spacing, spacing, spacing)
+current_run_dict["num_envs"] = num_envs
 
 asset_root = "../../assets"
 bin_options = gymapi.AssetOptions()
 bin_options.use_mesh_materials = True
 bin_options.vhacd_enabled = True
+bin_options.fix_base_link = True
 
 # load bin asset
-bin_asset_file = "urdf/custom/test_bin.urdf"
+bin_asset_file = "urdf/custom/cardboardbin.urdf"
 print("Loading asset '%s' from '%s'" % (bin_asset_file, asset_root))
 bin_asset = gym.load_asset(sim, asset_root, bin_asset_file, bin_options)
 bin_pose = gymapi.Transform()
-bin_pose.p = gymapi.Vec3(-0.18, 0.0, 0.3)
+bin_pose.p = gymapi.Vec3(0, 0, 0)
 bin_pose.r = gymapi.Quat.from_euler_zyx(-np.pi / 2, 0, 0)
 # Create box asset
-box = gym.create_box(sim, 0.15, 0.03, 0.05, bin_options)
 
+box_set = []
+
+box = gym.create_box(sim, 0.15 * 2, 0.03 * 2, 0.05 * 2, gymapi.AssetOptions())
 
 # Create segmentation colors for visualization
 segmentation_colors = []
@@ -169,6 +181,13 @@ for i in range(num_envs):
     # create env
     env = gym.create_env(sim, env_lower, env_upper, num_per_row)
     envs.append(env)
+    current_run_dict[i] = {}
+    current_run_dict[i]["pick_pt"] = []
+    current_run_dict[i]["poses"] = []
+    current_run_dict[i]["sizes"] = []
+
+    for j in range(20):
+        current_run_dict.append(0.2 * np.random.random(3))
 
     # generate random dark color
     c = 0.5 * np.random.random(3)
@@ -199,13 +218,13 @@ for i in range(num_envs):
 
     # create jenga tower
     pose = gymapi.Transform()
-    pose.p = gymapi.Vec3(0, 0.2, 0)
-    for level in range(10):
-        pose.p.y += 0.04
+    pose.p = gymapi.Vec3(0, 0.5, 0)
+    for level in range(5):
+        pose.p.y += 0.08
         # pdb.set_trace()
         if level % 2 == 0:
             pose.r = gymapi.Quat(0, 0, 0, 1)
-            pose.p.x = 0
+            pose.p.x = 0.05 * np.random.normal()
             pose.p.z = 0
             middle = gym.create_actor(
                 env, box, pose, "middle", i, segmentationId=segmentation_id
@@ -214,15 +233,15 @@ for i in range(num_envs):
                 env, middle, 0, gymapi.MESH_VISUAL_AND_COLLISION, color
             )
             box_props = gym.get_actor_rigid_shape_properties(env, middle)
-            box_props[0].restitution = 0.1
+            box_props[0].restitution = 0.1 + 0.01 * np.random.random()
             box_props[0].compliance = 0.01
             gym.set_actor_rigid_shape_properties(env, middle, box_props)
             # gym.set_rigid_body_segmentation_id(env, middle, 0, segmentation_id)
             actor_handles[i].append(middle)
             segmentation_id += 1
 
-            pose.p.x = 0
-            pose.p.z = 0.05
+            pose.p.x = 0.1 * np.random.normal()
+            pose.p.z = 0.1 + 0.1 * np.random.random()
             left = gym.create_actor(
                 env, box, pose, "left", i, segmentationId=segmentation_id
             )
@@ -230,20 +249,20 @@ for i in range(num_envs):
                 env, left, 0, gymapi.MESH_VISUAL_AND_COLLISION, color
             )
             box_props = gym.get_actor_rigid_shape_properties(env, left)
-            box_props[0].restitution = 0.1
+            box_props[0].restitution = 0.1 + 0.01 * np.random.random()
             box_props[0].compliance = 0.01
             gym.set_actor_rigid_shape_properties(env, left, box_props)
             # gym.set_rigid_body_segmentation_id(env, left, 0, segmentation_id)
             actor_handles[i].append(left)
             segmentation_id += 1
 
-            pose.p.x = 0
-            pose.p.z = -0.05
+            pose.p.x = 0.1 * np.random.normal()
+            pose.p.z = -0.1 - 0.1 * np.random.random()
             right = gym.create_actor(
                 env, box, pose, "right", i, segmentationId=segmentation_id
             )
             box_props = gym.get_actor_rigid_shape_properties(env, right)
-            box_props[0].restitution = 0.1
+            box_props[0].restitution = 0.1 + 0.01 * np.random.random()
             box_props[0].compliance = 0.01
             gym.set_actor_rigid_shape_properties(env, right, box_props)
             gym.set_rigid_body_color(
@@ -255,23 +274,22 @@ for i in range(num_envs):
         else:
             pose.r = gymapi.Quat.from_euler_zyx(0, np.pi / 2, 0)
             pose.p.x = 0
-            pose.p.z = 0
+            pose.p.z = 0.1 * np.random.normal()
             middle = gym.create_actor(
                 env, box, pose, "middle", i, segmentationId=segmentation_id
             )
             box_props = gym.get_actor_rigid_shape_properties(env, middle)
-            box_props[0].restitution = 0.1
+            box_props[0].restitution = 0.1 + 0.01 * np.random.random()
             box_props[0].compliance = 0.01
             gym.set_actor_rigid_shape_properties(env, middle, box_props)
             gym.set_rigid_body_color(
                 env, middle, 0, gymapi.MESH_VISUAL_AND_COLLISION, color
             )
-            # gym.set_rigid_body_segmentation_id(env, middle, 0, segmentation_id)
             actor_handles[i].append(middle)
             segmentation_id += 1
 
-            pose.p.x = 0.05
-            pose.p.z = 0
+            pose.p.x = 0.1 + 0.1 * np.random.random()
+            pose.p.z = 0.1 * np.random.normal()
             left = gym.create_actor(
                 env, box, pose, "left", i, segmentationId=segmentation_id
             )
@@ -279,15 +297,14 @@ for i in range(num_envs):
                 env, left, 0, gymapi.MESH_VISUAL_AND_COLLISION, color
             )
             box_props = gym.get_actor_rigid_shape_properties(env, left)
-            box_props[0].restitution = 0.1
+            box_props[0].restitution = 0.1 + 0.01 * np.random.random()
             box_props[0].compliance = 0.01
             gym.set_actor_rigid_shape_properties(env, left, box_props)
-            # gym.set_rigid_body_segmentation_id(env, left, 0, segmentation_id)
             actor_handles[i].append(left)
             segmentation_id += 1
 
-            pose.p.x = -0.05
-            pose.p.z = 0
+            pose.p.x = -0.1 - 0.1 * np.random.random()
+            pose.p.z = 0.1 * np.random.normal()
             right = gym.create_actor(
                 env, box, pose, "right", i, segmentationId=segmentation_id
             )
@@ -295,10 +312,9 @@ for i in range(num_envs):
                 env, right, 0, gymapi.MESH_VISUAL_AND_COLLISION, color
             )
             box_props = gym.get_actor_rigid_shape_properties(env, right)
-            box_props[0].restitution = 0.1
+            box_props[0].restitution = 0.1 + 0.01 * np.random.random()
             box_props[0].compliance = 0.01
             gym.set_actor_rigid_shape_properties(env, right, box_props)
-            # gym.set_rigid_body_segmentation_id(env, right, 0, segmentation_id)
             actor_handles[i].append(right)
             segmentation_id += 1
 
@@ -308,6 +324,7 @@ for i in range(num_envs):
     camera_properties = gymapi.CameraProperties()
     camera_properties.width = 720
     camera_properties.height = 480
+    # camera_properties.use_collision_geometry = True
 
     # Set a fixed position and look-target for the first camera
     # position and target location are in the coordinate frame of the environment
@@ -328,6 +345,7 @@ for i in range(num_envs):
 if os.path.exists("graphics_images"):
     shutil.rmtree("graphics_images")
     os.mkdir("graphics_images")
+    os.mkdir("graphics_images/depth")
 
 if os.path.exists("poses"):
     shutil.rmtree("poses")
@@ -336,6 +354,8 @@ frame_count = 0
 
 sideways_frame = -1
 obj_handle = []
+objects_picked = 0
+
 # Main simulation loop
 while True:
     # step the physics simulation
@@ -374,7 +394,7 @@ while True:
                     rgb_filename,
                 )
 
-            state["pose"]["p"].fill(original_position)
+            state["pose"]["p"] = original_position
             if not gym.set_actor_rigid_body_states(
                 envs[i], actor_handles[i][0], state, gymapi.STATE_ALL
             ):
@@ -383,16 +403,16 @@ while True:
             gym.step_graphics(sim)
             # render the camera sensors
             gym.render_all_camera_sensors(sim)
-            # for j in range(0, 2):
-            # The gym utility to write images to disk is recommended only for RGB images.
-            # rgb_filename = f"graphics_images/rgb_env{i}_cam{j}_frame{str(frame_count).zfill(4)}.png"
-            # gym.write_camera_image_to_file(
-            #     sim,
-            #     envs[i],
-            #     camera_handles[i][j],
-            #     gymapi.IMAGE_COLOR,
-            #     rgb_filename,
-            # )
+            for j in range(1, 2):
+                # The gym utility to write images to disk is recommended only for RGB images.
+                rgb_filename = f"graphics_images/rgb_env{i}_cam{j}_frame{str(frame_count).zfill(4)}.png"
+                gym.write_camera_image_to_file(
+                    sim,
+                    envs[i],
+                    camera_handles[i][j],
+                    gymapi.IMAGE_COLOR,
+                    rgb_filename,
+                )
             # depth_image = gym.get_camera_image(
             #     sim, envs[i], camera_handles[i][0], gymapi.IMAGE_DEPTH
             # )
@@ -426,20 +446,27 @@ while True:
         if gym.query_viewer_has_closed(viewer):
             break
 
-    if frame_count > 300:
+    if frame_count > 200 and objects_picked < 15:
         if frame_count < sideways_frame:
             print("lifting")
             for i, env in enumerate(envs):
                 if obj_handle[i] is not None:
-                    state = gym.get_actor_rigid_body_states(
-                        envs[i], obj_handle[i], gymapi.STATE_ALL
-                    )
-                    pos = state["pose"]["p"][0].copy()
-                    gym.apply_body_force_at_pos(
+                    # state = gym.get_actor_rigid_body_states(
+                    #     envs[i], obj_handle[i], gymapi.STATE_ALL
+                    # )
+                    # pos = state["pose"]["p"][0].copy()
+                    # gym.apply_body_force_at_pos(
+                    #     env,
+                    #     obj_handle[i],
+                    #     gymapi.Vec3(0, 10, 0),
+                    #     gymapi.Vec3(pos[0], pos[1], pos[2]),
+                    #     gymapi.ENV_SPACE,
+                    # )
+                    gym.apply_body_forces(
                         env,
                         obj_handle[i],
-                        gymapi.Vec3(0, 10, 0),
-                        gymapi.Vec3(pos[0], pos[1], pos[2]),
+                        gymapi.Vec3(0, 50, 0),
+                        None,
                         gymapi.ENV_SPACE,
                     )
 
@@ -461,8 +488,10 @@ while True:
                     rot_mat = RigidTransform.rotation_from_quaternion(rot)
                     tsfm = RigidTransform(rot_mat, pos)
                     poses.append(tsfm.matrix)
-                poses = np.array(poses)
-                np.save(f"poses/env{i}_frame{frame_count}_poses.npy", poses)
+                if objects_picked == 0:
+                    poses = np.array(poses)
+                    np.save(f"poses/env{i}_frame{frame_count}_poses.npy", poses)
+                current_run_dict[i]["poses"].append(poses)
                 # save segmentation images
                 depth_image = gym.get_camera_image(
                     sim, envs[i], camera_handles[i][0], gymapi.IMAGE_DEPTH
@@ -476,7 +505,7 @@ while True:
                     normalized_depth.astype(np.uint8), mode="L"
                 )
                 normalized_depth_image.save(
-                    f"graphics_images/depth_env{i}_cam{0}_frame{str(frame_count).zfill(4)}.jpg"
+                    f"graphics_images/depth/depth_env{i}_cam{0}_frame{str(frame_count).zfill(4)}.jpg"
                 )
                 vis_seg = visualize_segmentation(seg_image, segmentation_colors) * 256
                 # Convert to a pillow image and write it to disk
@@ -490,7 +519,14 @@ while True:
                 view_matrix = np.matrix(
                     gym.get_camera_view_matrix(sim, env, camera_handles[i][0])
                 )
-                pixel = (400, 250)
+                pixel = (int(np.random.random() * 480), int(np.random.random() * 720))
+                while seg_image[pixel] <= 1:
+                    pixel = (
+                        int(np.random.random() * 480),
+                        int(np.random.random() * 720),
+                    )
+                current_run_dict[i]["pick_pt"].append(pixel)
+
                 pos = deproject_point(
                     720,
                     480,
@@ -505,56 +541,65 @@ while True:
                     gym.apply_body_force_at_pos(
                         env,
                         actor_handles[i][seg_image[pixel] - 1],
-                        gymapi.Vec3(0, 15, 0),
+                        gymapi.Vec3(0, 75, 0),
                         gymapi.Vec3(pos[0], pos[1], pos[2]),
                         gymapi.ENV_SPACE,
                     )
                 obj_handle.append(actor_handles[i][seg_image[pixel] - 1])
             sideways_frame = frame_count + 100
 
-        else:
+        elif sideways_frame == frame_count:
             for i, env in enumerate(envs):
                 if obj_handle[i] is not None:
-                    gym.apply_body_force_at_pos(
-                        env,
-                        obj_handle[i],
-                        gymapi.Vec3(100, 0, 0),
-                        None,
-                        gymapi.ENV_SPACE,
+                    rm_state = gym.get_actor_rigid_body_states(
+                        envs[i], obj_handle[i], gymapi.STATE_ALL
                     )
-    if frame_count > 450:
-        for i in range(num_envs):
-            for j in range(0, 2):
-                # Retrieve image data directly. Use this for Depth, Segmentation, and Optical Flow images
-                # Here we retrieve a depth image, normalize it to be visible in an
-                # output image and then write it to disk using Pillow
-                depth_image = gym.get_camera_image(
-                    sim, envs[i], camera_handles[i][j], gymapi.IMAGE_DEPTH
-                )
-                normalized_depth = visualize_depth(depth_image)
-                # Convert to a pillow image and write it to disk
-                normalized_depth_image = im.fromarray(
-                    normalized_depth.astype(np.uint8), mode="L"
-                )
-                normalized_depth_image.save(
-                    f"graphics_images/depth_env{i}_cam{j}_frame{str(frame_count).zfill(4)}.jpg"
-                )
+                    rm_state["pose"]["p"].fill((-2, 1, -2))
+                    rm_state["vel"]["linear"].fill((0, 0, 0))
+                    gym.set_actor_rigid_body_states(
+                        envs[i], obj_handle[i], rm_state, gymapi.STATE_ALL
+                    )
 
-                seg_image = gym.get_camera_image(
-                    sim, envs[i], camera_handles[i][j], gymapi.IMAGE_SEGMENTATION
-                )
-                vis_seg = visualize_segmentation(seg_image, segmentation_colors) * 256
-                # Convert to a pillow image and write it to disk
-                vis_seg_image = im.fromarray(vis_seg.astype(np.uint8), mode="RGB")
-                vis_seg_image.save(
-                    f"graphics_images/seg_env{i}_cam{j}_frame{str(frame_count).zfill(4)}.jpg"
-                )
+        else:
+            sideways_frame = -1
+            objects_picked += 1
+            obj_handle = []
+
+    elif objects_picked >= 15:
+        # for i in range(num_envs):
+        #     for j in range(0, 2):
+        #         # Retrieve image data directly. Use this for Depth, Segmentation, and Optical Flow images
+        #         # Here we retrieve a depth image, normalize it to be visible in an
+        #         # output image and then write it to disk using Pillow
+        #         depth_image = gym.get_camera_image(
+        #             sim, envs[i], camera_handles[i][j], gymapi.IMAGE_DEPTH
+        #         )
+        #         normalized_depth = visualize_depth(depth_image)
+        #         # Convert to a pillow image and write it to disk
+        #         normalized_depth_image = im.fromarray(
+        #             normalized_depth.astype(np.uint8), mode="L"
+        #         )
+        #         normalized_depth_image.save(
+        #             f"graphics_images/depth_env{i}_cam{j}_frame{str(frame_count).zfill(4)}.jpg"
+        #         )
+
+        #         seg_image = gym.get_camera_image(
+        #             sim, envs[i], camera_handles[i][j], gymapi.IMAGE_SEGMENTATION
+        #         )
+        #         vis_seg = visualize_segmentation(seg_image, segmentation_colors) * 256
+        #         # Convert to a pillow image and write it to disk
+        #         vis_seg_image = im.fromarray(vis_seg.astype(np.uint8), mode="RGB")
+        #         vis_seg_image.save(
+        #             f"graphics_images/seg_env{i}_cam{j}_frame{str(frame_count).zfill(4)}.jpg"
+        #         )
         break
 
     frame_count = frame_count + 1
 
     print(frame_count, datetime.now())
 
+with open(f"poses/run_{datetime.now()}.json", "w") as w:
+    json.dump(current_run_dict, w, cls=NumpyEncoder)
 print("Done")
 
 # cleanup
