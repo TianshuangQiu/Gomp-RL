@@ -286,13 +286,13 @@
     <visual>
       <geometry>
         <!-- The path to the visual meshes in the package. -->
-        <mesh filename="meshes/visual/bluction.stl"/>
+        <mesh filename="meshes/visual/grasped.obj"/>
       </geometry>
     </visual>
     <collision>
       <geometry>
         <!-- The path to the collision meshes in the package. -->
-        <mesh filename="meshes/collision/bluction.stl"/>
+        <mesh filename="meshes/collision/grasped.obj"/>
       </geometry>
     </collision>
   </link>
