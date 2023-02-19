@@ -129,6 +129,7 @@ for i in range(500):
     c = np.random.random(3)
     segmentation_colors.append(c)
 
+
 # Assign colors to segmentation
 def visualize_segmentation(image_array, seg_list):
     output = np.zeros(shape=(image_array.shape[0], image_array.shape[1], 3))
@@ -156,7 +157,6 @@ def visualize_depth(image_array):
 def deproject_point(
     cam_width, cam_height, pixel: tuple, depth_buffer, seg_buffer, view, proj
 ):
-
     vinv = np.linalg.inv(view)
     fu = 2 / proj[0, 0]
     fv = 2 / proj[1, 1]
@@ -172,7 +172,7 @@ def deproject_point(
     d = depth_buffer[pixel]  # depth buffer value
     X2 = [d * fu * u, d * fv * v, d, 1]  # deprojection vector
     p2 = X2 * vinv  # Inverse camera view to get world coordinates
-    return [p2[0, 2], p2[0, 0], p2[0, 1]]
+    return [p2[0, 0], p2[0, 1], p2[0, 2]]
 
 
 # Create environments
