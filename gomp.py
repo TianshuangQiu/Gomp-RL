@@ -232,7 +232,7 @@ for i in range(num_envs):
     # create jenga tower
     pose = gymapi.Transform()
     pose.p = gymapi.Vec3(0, 0, 0.5)
-    for level in range(6):
+    for level in range(np.random.randint(3, 6)):
         pose.p.z += 0.2
         # pdb.set_trace()
 
@@ -575,7 +575,7 @@ while True:
             objects_picked += 1
             obj_handle = [None] * num_envs
 
-    elif objects_picked >= 10:
+    elif objects_picked >= 5:
         # for i in range(num_envs):
         #     for j in range(0, 2):
         #         # Retrieve image data directly. Use this for Depth, Segmentation, and Optical Flow images
