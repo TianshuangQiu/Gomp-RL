@@ -100,7 +100,7 @@ if not args.headless:
         raise ValueError("*** Failed to create viewer")
 
 # set up the env grid
-num_envs = 100
+num_envs = 1
 spacing = 2.5
 num_per_row = int(sqrt(num_envs))
 env_lower = gymapi.Vec3(-spacing, 0.0, -spacing)
@@ -157,6 +157,7 @@ def visualize_depth(image_array):
 def deproject_point(
     cam_width, cam_height, pixel: tuple, depth_buffer, seg_buffer, view, proj
 ):
+    pdb.set_trace()
     vinv = np.linalg.inv(view)
     fu = 2 / proj[0, 0]
     fv = 2 / proj[1, 1]
@@ -173,6 +174,19 @@ def deproject_point(
     X2 = [d * fu * u, d * fv * v, d, 1]  # deprojection vector
     p2 = X2 * vinv  # Inverse camera view to get world coordinates
     return [p2[0, 0], p2[0, 1], p2[0, 2]]
+
+
+def downsample(x, poolh, poolw, strideh, stridew):
+    out = np.zeros(
+        (1 + (x.shape[0] - poolh) // strideh, 1 + (x.shape[1] - poolw) // stridew)
+    )
+    print(out.shape)
+    for i in range(out.shape[0]):
+        for j in range(out.shape[1]):
+            out[i, j] = np.max(
+                x[i * strideh : i * strideh + poolh, j * stridew : j * stridew + poolw]
+            )
+    return out
 
 
 # Create environments
@@ -232,7 +246,7 @@ for i in range(num_envs):
     # create jenga tower
     pose = gymapi.Transform()
     pose.p = gymapi.Vec3(0, 0, 0.5)
-    for level in range(6):
+    for level in range(np.random.randint(3, 6)):
         pose.p.z += 0.2
         # pdb.set_trace()
 
@@ -314,10 +328,10 @@ for i in range(num_envs):
     # position and target location are in the coordinate frame of the environment
     h1 = gym.create_camera_sensor(envs[i], camera_properties)
     camera_transform = gymapi.Transform()
-    camera_transform.p = gymapi.Vec3(0.16, -0.354253, 1.2168)
+    camera_transform.p = gymapi.Vec3(0.0254, -0.4572, 1.2)
     rotation_matrix = (
-        R.from_euler("z", 0, degrees=True).as_matrix()
-        @ R.from_euler("y", -95, degrees=True).as_matrix()
+        R.from_euler("z", 0.1, degrees=True).as_matrix()
+        @ R.from_euler("y", -90, degrees=True).as_matrix()
     )
     # rotation_matrix = np.linalg.inv(
     #     (
@@ -412,7 +426,7 @@ while True:
                 )
             # depth_image = gym.get_camera_image(
             #     sim, envs[i], camera_handles[i][0], gymapi.IMAGE_DEPTH
-            # )
+            # )[5:-5, 10:-10]
             # seg_image = gym.get_camera_image(
             #     sim, envs[i], camera_handles[i][0], gymapi.IMAGE_SEGMENTATION
             # )
@@ -429,6 +443,14 @@ while True:
             # vis_seg_image = im.fromarray(vis_seg.astype(np.uint8), mode="RGB")
             # vis_seg_image.save(
             #     f"graphics_images/seg_env{i}_cam{0}_frame{str(frame_count).zfill(4)}.jpg"
+            # )
+
+            # down_sampled_depth = downsample(depth_image, 30, 30, 15, 15)
+            # normalized_depth = visualize_depth(down_sampled_depth)
+            # # Convert to a pillow image and write it to disk
+            # dsd = im.fromarray(normalized_depth.astype(np.uint8), mode="L")
+            # dsd.save(
+            #     f"graphics_images/downsampled_depth_env{i}_cam{0}_frame{str(frame_count).zfill(4)}.jpg"
             # )
 
     if not args.headless:
@@ -513,11 +535,11 @@ while True:
                     sim, envs[i], camera_handles[i][0], gymapi.IMAGE_SEGMENTATION
                 )
                 np.savetxt(
-                    "depth/"
+                    "depth/DOWNSAMPLED"
                     + str(datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
                     + f"_env{i}_frame{frame_count}.txt",
-                    depth_image,
-                    fmt="%10.20f",
+                    downsample(depth_image[5:-5, 10:-10], 30, 30, 15, 15),
+                    fmt="%10.5f",
                 )
 
                 projection_matrix = np.matrix(
@@ -575,7 +597,7 @@ while True:
             objects_picked += 1
             obj_handle = [None] * num_envs
 
-    elif objects_picked >= 10:
+    elif objects_picked >= 5:
         # for i in range(num_envs):
         #     for j in range(0, 2):
         #         # Retrieve image data directly. Use this for Depth, Segmentation, and Optical Flow images
