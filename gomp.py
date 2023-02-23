@@ -100,7 +100,7 @@ if not args.headless:
         raise ValueError("*** Failed to create viewer")
 
 # set up the env grid
-num_envs = 1
+num_envs = 100
 spacing = 2.5
 num_per_row = int(sqrt(num_envs))
 env_lower = gymapi.Vec3(-spacing, 0.0, -spacing)
@@ -157,7 +157,6 @@ def visualize_depth(image_array):
 def deproject_point(
     cam_width, cam_height, pixel: tuple, depth_buffer, seg_buffer, view, proj
 ):
-    pdb.set_trace()
     vinv = np.linalg.inv(view)
     fu = 2 / proj[0, 0]
     fv = 2 / proj[1, 1]
@@ -180,7 +179,6 @@ def downsample(x, poolh, poolw, strideh, stridew):
     out = np.zeros(
         (1 + (x.shape[0] - poolh) // strideh, 1 + (x.shape[1] - poolw) // stridew)
     )
-    print(out.shape)
     for i in range(out.shape[0]):
         for j in range(out.shape[1]):
             out[i, j] = np.max(
@@ -330,7 +328,7 @@ for i in range(num_envs):
     camera_transform = gymapi.Transform()
     camera_transform.p = gymapi.Vec3(0.0254, -0.4572, 1.2)
     rotation_matrix = (
-        R.from_euler("z", 0.1, degrees=True).as_matrix()
+        R.from_euler("z", 0.001, degrees=True).as_matrix()
         @ R.from_euler("y", -90, degrees=True).as_matrix()
     )
     # rotation_matrix = np.linalg.inv(
@@ -534,11 +532,13 @@ while True:
                 seg_image = gym.get_camera_image(
                     sim, envs[i], camera_handles[i][0], gymapi.IMAGE_SEGMENTATION
                 )
+                write_depth = depth_image[5:-5, 10:-10] + 1.2
+                write_depth[write_depth < 0] = 0
                 np.savetxt(
                     "depth/DOWNSAMPLED"
                     + str(datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
                     + f"_env{i}_frame{frame_count}.txt",
-                    downsample(depth_image[5:-5, 10:-10], 30, 30, 15, 15),
+                    downsample(write_depth, 30, 30, 15, 15),
                     fmt="%10.5f",
                 )
 
@@ -630,10 +630,10 @@ while True:
 
     print(frame_count, datetime.now())
 
-with open(
-    "poses/run_" + datetime.now().strftime("%Y-%m-%d-%H-%M-%S") + ".json", "w"
-) as w:
-    json.dump(current_run_dict, w, cls=NumpyEncoder)
+# with open(
+#     "poses/run_" + datetime.now().strftime("%Y-%m-%d-%H-%M-%S") + ".json", "w"
+# ) as w:
+#     json.dump(current_run_dict, w, cls=NumpyEncoder)
 print("Done")
 
 # cleanup
