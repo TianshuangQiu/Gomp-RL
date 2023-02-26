@@ -347,12 +347,13 @@ for i in range(num_envs):
     camera_properties.width = 640
     camera_properties.height = 480
     camera_properties.horizontal_fov = fov
+    camera_properties.use_collision_geometry = False
 
     # Set a fixed position and look-target for the first camera
     # position and target location are in the coordinate frame of the environment
     h1 = gym.create_camera_sensor(envs[i], camera_properties)
     camera_transform = gymapi.Transform()
-    camera_transform.p = gymapi.Vec3(0.0254, -0.4572, 1.2)
+    camera_transform.p = gymapi.Vec3(0.0254, -0.4572, 1.3)
     rotation_matrix = (
         R.from_euler("z", 0.001, degrees=True).as_matrix()
         @ R.from_euler("y", -90, degrees=True).as_matrix()
@@ -465,9 +466,9 @@ while True:
             vis_seg = visualize_segmentation(seg_image, segmentation_colors) * 256
             # Convert to a pillow image and write it to disk
             vis_seg_image = im.fromarray(vis_seg.astype(np.uint8), mode="RGB")
-            vis_seg_image.save(
-                f"graphics_images/seg_env{i}_cam{0}_frame{str(frame_count).zfill(4)}.jpg"
-            )
+            # vis_seg_image.save(
+            #     f"graphics_images/seg_env{i}_cam{0}_frame{str(frame_count).zfill(4)}.jpg"
+            # )
 
             down_sampled_depth = downsample(depth_image, 30, 30, 15, 15)
             normalized_depth = visualize_depth(down_sampled_depth)
@@ -556,9 +557,11 @@ while True:
                 seg_image = gym.get_camera_image(
                     sim, envs[i], camera_handles[i][0], gymapi.IMAGE_SEGMENTATION
                 )
-                write_depth = depth_image[5:-5, 10:-10] + 1.2
+                write_depth = depth_image[5:-5, 10:-10] + 1.3
                 write_depth[write_depth < 0] = 0
                 curr_time = str(datetime.now().strftime("%Y-%m-%d_%H-%M-%S"))
+
+                ##SAVE SHIT BEGINS HERE###
                 np.savetxt(
                     "depth/DOWNSAMPLED_"
                     + curr_time
@@ -582,11 +585,12 @@ while True:
                     pt_rad,
                 )
 
-                with open(
-                    "logs/run_" + curr_time + f"_env{i}_frame{frame_count}.json",
-                    "w",
-                ) as w:
-                    json.dump(current_run_dict[i], w, cls=NumpyEncoder)
+                # with open(
+                #     "logs/run_" + curr_time + f"_env{i}_frame{frame_count}.json",
+                #     "w",
+                # ) as w:
+                #     json.dump(current_run_dict[i], w, cls=NumpyEncoder)
+                ##SAVE SHIT ENDS HERE###
 
                 projection_matrix = np.matrix(
                     gym.get_camera_proj_matrix(sim, env, camera_handles[i][0])
@@ -622,6 +626,7 @@ while True:
                         gymapi.ENV_SPACE,
                     )
                 obj_handle[i] = actor_handles[i][seg_image[pixel] - 1]
+
                 sideways_frame = frame_count + 100
 
         elif sideways_frame == frame_count:
