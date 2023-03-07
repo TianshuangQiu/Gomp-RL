@@ -100,7 +100,7 @@ if not args.headless:
         raise ValueError("*** Failed to create viewer")
 
 # set up the env grid
-num_envs = 100
+num_envs = 1
 spacing = 2.5
 num_per_row = int(sqrt(num_envs))
 env_lower = gymapi.Vec3(-spacing, 0.0, -spacing)
@@ -117,10 +117,10 @@ bin_options.fix_base_link = True
 bin_asset_file = "urdf/custom/cardboardbin.urdf"
 print("Loading asset '%s' from '%s'" % (bin_asset_file, asset_root))
 bin_asset = gym.load_asset(sim, asset_root, bin_asset_file, bin_options)
-bin_position = (0.0254, -0.4572, 0)
+bin_position = (0.0254, -0.56, 0)
 bin_pose = gymapi.Transform()
 bin_pose.p = gymapi.Vec3(bin_position[0], bin_position[1], bin_position[2])
-bin_pose.r = gymapi.Quat.from_euler_zyx(0, 0, np.pi / 2)
+bin_pose.r = gymapi.Quat.from_euler_zyx(0, 0, 0)
 
 
 # Create segmentation colors for visualization
@@ -155,16 +155,24 @@ def visualize_depth(image_array):
 
 
 def deproject_point(
-    cam_width, cam_height, pixel: tuple, depth_buffer, seg_buffer, view, proj
+    cam_width,
+    cam_height,
+    pixel: tuple,
+    depth_buffer,
+    seg_buffer,
+    view,
+    proj,
+    none_okay=True,
 ):
     vinv = np.linalg.inv(view)
     fu = 2 / proj[0, 0]
     fv = 2 / proj[1, 1]
 
     # Ignore any points which originate from ground plane or empty space
-    depth_buffer[seg_buffer == 0] = -10001
-    if depth_buffer[pixel] < -10000:
-        return None
+    if none_okay:
+        depth_buffer[seg_buffer == 0] = -10001
+        if depth_buffer[pixel] < -10000:
+            return None
     centerU = cam_width / 2
     centerV = cam_height / 2
     u = -(pixel[1] - centerU) / (cam_width)  # image-space coordinate
@@ -175,13 +183,13 @@ def deproject_point(
     return [p2[0, 0], p2[0, 1], p2[0, 2]]
 
 
-def downsample(x, poolh, poolw, strideh, stridew):
+def downsample(x, poolh, poolw, strideh, stridew, func=np.max):
     out = np.zeros(
         (1 + (x.shape[0] - poolh) // strideh, 1 + (x.shape[1] - poolw) // stridew)
     )
     for i in range(out.shape[0]):
         for j in range(out.shape[1]):
-            out[i, j] = np.max(
+            out[i, j] = func(
                 x[i * strideh : i * strideh + poolh, j * stridew : j * stridew + poolw]
             )
     return out
@@ -215,6 +223,7 @@ def transform_pts(arg_tuple):
 actor_handles = [[]]
 camera_handles = [[]]
 envs = []
+header = None
 
 # cam_prop = CameraIntrinsics(
 #     None,
@@ -241,8 +250,8 @@ for i in range(num_envs):
     current_run_dict[i]["sizes"] = []
     current_run_dict[i]["pt_rad"] = []
 
-    for j in range(20):
-        sizes = np.round(0.125 * np.random.random(3) + 0.05, 5)
+    for j in range(30):
+        sizes = np.round(0.15 * np.random.random(3) + 0.05, 5)
         current_run_dict[i]["sizes"].append(sizes)
         current_run_dict[i]["pt_rad"].append(compute_capsule(sizes))
     # generate random dark color
@@ -270,8 +279,8 @@ for i in range(num_envs):
     # create jenga tower
     pose = gymapi.Transform()
     pose.p = gymapi.Vec3(0, 0, 0.5)
-    for level in range(np.random.randint(3, 7)):
-        pose.p.z += 0.2
+    for level in range(np.random.randint(5, 10)):
+        pose.p.z += 0.2 + 0.02 * np.random.random()
         # pdb.set_trace()
 
         box = gym.create_box(
@@ -290,8 +299,8 @@ for i in range(num_envs):
             env, middle, 0, gymapi.MESH_VISUAL_AND_COLLISION, color
         )
         box_props = gym.get_actor_rigid_shape_properties(env, middle)
-        box_props[0].restitution = 0.1 + 0.01 * np.random.random()
-        box_props[0].compliance = 0.01
+        box_props[0].restitution = 0.1 + 0.05 * np.random.random()
+        box_props[0].compliance = 0.01 + 0.01 * np.random.random()
         gym.set_actor_rigid_shape_properties(env, middle, box_props)
         # gym.set_rigid_body_segmentation_id(env, middle, 0, segmentation_id)
         actor_handles[i].append(middle)
@@ -311,8 +320,8 @@ for i in range(num_envs):
         )
         gym.set_rigid_body_color(env, left, 0, gymapi.MESH_VISUAL_AND_COLLISION, color)
         box_props = gym.get_actor_rigid_shape_properties(env, left)
-        box_props[0].restitution = 0.1 + 0.01 * np.random.random()
-        box_props[0].compliance = 0.01
+        box_props[0].restitution = 0.1 + 0.05 * np.random.random()
+        box_props[0].compliance = 0.01 + 0.01 * np.random.random()
         gym.set_actor_rigid_shape_properties(env, left, box_props)
         # gym.set_rigid_body_segmentation_id(env, left, 0, segmentation_id)
         actor_handles[i].append(left)
@@ -331,8 +340,8 @@ for i in range(num_envs):
             env, box, pose, "right", i, segmentationId=segmentation_id
         )
         box_props = gym.get_actor_rigid_shape_properties(env, right)
-        box_props[0].restitution = 0.1 + 0.01 * np.random.random()
-        box_props[0].compliance = 0.01
+        box_props[0].restitution = 0.1 + 0.05 * np.random.random()
+        box_props[0].compliance = 0.01 + 0.01 * np.random.random()
         gym.set_actor_rigid_shape_properties(env, right, box_props)
         gym.set_rigid_body_color(env, right, 0, gymapi.MESH_VISUAL_AND_COLLISION, color)
         # gym.set_rigid_body_segmentation_id(env, right, 0, segmentation_id)
@@ -353,24 +362,30 @@ for i in range(num_envs):
     # position and target location are in the coordinate frame of the environment
     h1 = gym.create_camera_sensor(envs[i], camera_properties)
     camera_transform = gymapi.Transform()
-    camera_transform.p = gymapi.Vec3(0.0254, -0.4572, 1.3)
-    rotation_matrix = (
-        R.from_euler("z", 0.001, degrees=True).as_matrix()
-        @ R.from_euler("y", -90, degrees=True).as_matrix()
-    )
-    # rotation_matrix = np.linalg.inv(
-    #     (
-    #         [
-    #             [-0.979904, 0.016900, -0.198751],
-    #             [0.063866, 0.970532, -0.232355],
-    #             [0.188967, -0.240379, -0.952108],
-    #         ]
-    #     )
+    # camera_transform.p = gymapi.Vec3(0.0254, -0.4572, 1.42)
+    camera_transform.p = gymapi.Vec3(-0.093956, -0.381233, 1.06595 + 0.36)
+    # rotation_matrix = (
+    #     R.from_euler("z", 0.001, degrees=True).as_matrix()
+    #     @ R.from_euler("y", -90, degrees=True).as_matrix()
     # )
-    # rotation_matrix = R.from_euler("y", 90, degrees=True).as_matrix() @ rotation_matrix
+    rotation_matrix = (
+        R.from_euler("z", 90, degrees=True).as_matrix()
+        @ R.from_euler("y", 90, degrees=True).as_matrix()
+        @ R.from_euler("x", 180, degrees=True).as_matrix()
+        @ np.linalg.inv(
+            np.array(
+                [
+                    [0.999346, -0.001493, -0.036126],
+                    [-0.002240, -0.999785, -0.020626],
+                    [-0.036087, 0.020693, -0.999134],
+                ]
+            )
+        )
+    )
     tf = RigidTransform(rotation_matrix)
     quat = tf.quaternion
-    camera_transform.r = gymapi.Quat(quat[0], quat[1], quat[2], quat[3])
+    camera_transform.r = gymapi.Quat(quat[1], quat[2], quat[3], quat[0])
+    pdb.set_trace()
     gym.set_camera_transform(h1, envs[i], camera_transform)
     # camera_position = gymapi.Vec3(0.040411, -0.134253, 1.4168)
     # camera_target = gymapi.Vec3(0.040411, -0.13, 0.7)
@@ -378,8 +393,8 @@ for i in range(num_envs):
     camera_handles[i].append(h1)
 
     h2 = gym.create_camera_sensor(envs[i], camera_properties)
-    camera_position = gymapi.Vec3(0.9, 0.9, 0.9)
-    camera_target = gymapi.Vec3(0, 0, 0)
+    camera_position = gymapi.Vec3(2.5, -0.4, 1.2)
+    camera_target = gymapi.Vec3(0, -0.4, 1)
     gym.set_camera_location(h2, envs[i], camera_position, camera_target)
     camera_handles[i].append(h2)
 
@@ -409,36 +424,38 @@ while True:
     # render the camera sensors
     gym.render_all_camera_sensors(sim)
 
-    if frame_count < 0 and np.mod(frame_count, 1) == 0:
+    if frame_count > 200 or frame_count == 1:
         for i in range(num_envs):
-            # state = gym.get_actor_rigid_body_states(
-            #     envs[i], actor_handles[i][0], gymapi.STATE_ALL
-            # )
-            # original_position = state["pose"]["p"].copy()
-            # state["pose"]["p"].fill((5, 5, 5))
-            # if not gym.set_actor_rigid_body_states(
-            #     envs[i], actor_handles[i][0], state, gymapi.STATE_ALL
-            # ):
-            #     pdb.set_trace()
-            # gym.step_graphics(sim)
-            # # render the camera sensors
-            # gym.render_all_camera_sensors(sim)
-            # for j in range(1, 2):
-            #     # The gym utility to write images to disk is recommended only for RGB images.
-            #     rgb_filename = f"graphics_images/boxless_rgb_env{i}_cam{j}_frame{str(frame_count).zfill(4)}.png"
-            #     gym.write_camera_image_to_file(
-            #         sim,
-            #         envs[i],
-            #         camera_handles[i][j],
-            #         gymapi.IMAGE_COLOR,
-            #         rgb_filename,
-            #     )
+            state = gym.get_actor_rigid_body_states(
+                envs[i], actor_handles[i][0], gymapi.STATE_ALL
+            )
+            original_position = state["pose"]["p"].copy()
+            state["pose"]["p"].fill((5, 5, 5))
+            if not gym.set_actor_rigid_body_states(
+                envs[i], actor_handles[i][0], state, gymapi.STATE_ALL
+            ):
+                pdb.set_trace()
+            gym.step_graphics(sim)
+            # render the camera sensors
+            gym.render_all_camera_sensors(sim)
+            for j in range(1, 2):
+                # The gym utility to write images to disk is recommended only for RGB images.
+                rgb_filename = f"graphics_images/boxless_rgb_env{i}_cam{j}_frame{str(frame_count).zfill(4)}.png"
+                gym.write_camera_image_to_file(
+                    sim,
+                    envs[i],
+                    camera_handles[i][j],
+                    gymapi.IMAGE_COLOR,
+                    rgb_filename,
+                )
 
-            # state["pose"]["p"] = original_position
-            # if not gym.set_actor_rigid_body_states(
-            #     envs[i], actor_handles[i][0], state, gymapi.STATE_ALL
-            # ):
-            #     pdb.set_trace()
+            state["pose"]["p"] = original_position
+            if not gym.set_actor_rigid_body_states(
+                envs[i], actor_handles[i][0], state, gymapi.STATE_ALL
+            ):
+                pdb.set_trace()
+            gym.step_graphics(sim)
+            gym.render_all_camera_sensors(sim)
             for j in range(0, 2):
                 # The gym utility to write images to disk is recommended only for RGB images.
                 rgb_filename = f"graphics_images/rgb_env{i}_cam{j}_frame{str(frame_count).zfill(4)}.png"
@@ -461,7 +478,7 @@ while True:
                 normalized_depth.astype(np.uint8), mode="L"
             )
             normalized_depth_image.save(
-                f"graphics_images/depth_env{i}_cam{0}_frame{str(frame_count).zfill(4)}.jpg"
+                f"graphics_images/depth_env{i}_cam{0}_frame{str(frame_count).zfill(4)}.png"
             )
             vis_seg = visualize_segmentation(seg_image, segmentation_colors) * 256
             # Convert to a pillow image and write it to disk
@@ -490,7 +507,7 @@ while True:
         if gym.query_viewer_has_closed(viewer):
             break
 
-    if frame_count > 200:
+    if frame_count > 200 and objects_picked < 20:
         if frame_count < sideways_frame:
             print("lifting")
             for i, env in enumerate(envs):
@@ -557,13 +574,57 @@ while True:
                 seg_image = gym.get_camera_image(
                     sim, envs[i], camera_handles[i][0], gymapi.IMAGE_SEGMENTATION
                 )
-                write_depth = depth_image[5:-5, 10:-10] + 1.3
+                write_depth = depth_image[5:-5, 10:-10] + 1.42
                 write_depth[write_depth < 0] = 0
+                write_depth -= 0.36
                 curr_time = str(datetime.now().strftime("%Y-%m-%d_%H-%M-%S"))
+                projection_matrix = np.matrix(
+                    gym.get_camera_proj_matrix(sim, env, camera_handles[i][0])
+                )
+                view_matrix = np.matrix(
+                    gym.get_camera_view_matrix(sim, env, camera_handles[i][0])
+                )
 
                 ##SAVE SHIT BEGINS HERE###
+                if not os.path.exists("depth/depth_x.txt") or not os.path.exists(
+                    "depth/depth_y.txt"
+                ):
+                    print("doing full deprojection")
+                    x_blank = np.zeros((480, 640))
+                    y_blank = np.zeros((480, 640))
+                    for x_pix in range(480):
+                        for y_pix in range(640):
+                            deproj = deproject_point(
+                                640,
+                                480,
+                                (x_pix, y_pix),
+                                depth_image,
+                                seg_image,
+                                view_matrix,
+                                projection_matrix,
+                                none_okay=False,
+                            )
+                            x_blank[x_pix, y_pix] += deproj[0]
+                            y_blank[x_pix, y_pix] += deproj[1]
+                    if not os.path.exists("depth/depth_x.txt"):
+                        np.savetxt(
+                            "depth/depth_x.txt",
+                            downsample(
+                                x_blank[5:-5, 10:-10], 30, 30, 15, 15, np.average
+                            ),
+                            fmt="%10.5f",
+                        )
+                    if not os.path.exists("depth/depth_y.txt"):
+                        np.savetxt(
+                            "depth/depth_y.txt",
+                            downsample(
+                                y_blank[5:-5, 10:-10], 30, 30, 15, 15, np.average
+                            ),
+                            fmt="%10.5f",
+                        )
+                pdb.set_trace()
                 np.savetxt(
-                    "depth/DOWNSAMPLED_"
+                    "depth/z_non-overlap"
                     + curr_time
                     + f"_env{i}_frame{frame_count}.txt",
                     downsample(write_depth, 30, 30, 15, 15),
@@ -580,10 +641,10 @@ while True:
                     )
                 ]
 
-                np.save(
-                    "poses/PTRRAD_" + curr_time + f"_env{i}_frame{frame_count}.txt",
-                    pt_rad,
-                )
+                # np.save(
+                #     "poses/PTRRAD_" + curr_time + f"_env{i}_frame{frame_count}",
+                #     pt_rad,
+                # )
 
                 # with open(
                 #     "logs/run_" + curr_time + f"_env{i}_frame{frame_count}.json",
@@ -591,13 +652,6 @@ while True:
                 # ) as w:
                 #     json.dump(current_run_dict[i], w, cls=NumpyEncoder)
                 ##SAVE SHIT ENDS HERE###
-
-                projection_matrix = np.matrix(
-                    gym.get_camera_proj_matrix(sim, env, camera_handles[i][0])
-                )
-                view_matrix = np.matrix(
-                    gym.get_camera_view_matrix(sim, env, camera_handles[i][0])
-                )
                 valid_pixels = np.where(seg_image > 1)
                 num_valid = len(valid_pixels[0])
                 if num_valid == 0:
