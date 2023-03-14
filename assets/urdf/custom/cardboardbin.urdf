@@ -14,7 +14,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="meshes/zk_bin.obj" scale="1 1 1"/>
+        <mesh filename="meshes/realbin.obj" scale="1 1 1"/>
       </geometry>
       <!-- <material name="tray_material">
         <color rgba="0.7 0.7 0.7 1"/>
@@ -23,7 +23,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="meshes/zk_bin.obj" scale="1 1 1"/>
+        <mesh filename="meshes/realbin.obj" scale="1 1 1"/>
       </geometry>
     </collision>
   </link>
