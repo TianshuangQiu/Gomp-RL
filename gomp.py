@@ -239,6 +239,7 @@ def h_downsample(pt_cloud, min_pt, max_pt):
 
     grid_counter = 0
     min_val = np.min(pt_cloud[:, 2])
+    min_val = max(min_val, -0.34)  # prevents -inf
     for y in np.linspace(min_y, max_y + 0.001, 31):
         for x in np.linspace(min_x, max_x + 0.001, 41):
             idx = np.unravel_index(grid_counter, (31, 41))
@@ -410,8 +411,8 @@ for i in range(num_envs):
         actor_handles[i].append(right)
         segmentation_id += 1
 
-    # Create 2 cameras in each environment, one which views the origin of the environment
-    # and one which is attached to the 0th body of the 0th actor and moves with that actor
+    # Create cameras in each environment
+
     camera_handles.append([])
     camera_properties = gymapi.CameraProperties()
 
@@ -480,6 +481,7 @@ sideways_frame = -1
 obj_handle = [None] * num_envs
 objects_picked = 0
 dead_envs = np.array([False] * num_envs)
+view_matrix = None
 
 # Main simulation loop
 while True:
@@ -505,7 +507,7 @@ while True:
             gym.step_graphics(sim)
             # render the camera sensors
             gym.render_all_camera_sensors(sim)
-            for j in range(1, 2):
+            for j in range(0, 1):
                 # The gym utility to write images to disk is recommended only for RGB images.
                 rgb_filename = f"graphics_images/boxless_rgb_env{i}_cam{j}_frame{str(frame_count).zfill(4)}.png"
                 gym.write_camera_image_to_file(
@@ -635,11 +637,12 @@ while True:
                 projection_matrix = np.matrix(
                     gym.get_camera_proj_matrix(sim, env, camera_handles[i][0])
                 )
-                view_matrix = np.matrix(
-                    gym.get_camera_view_matrix(sim, env, camera_handles[i][0])
-                )
+                if view_matrix is None:
+                    view_matrix = np.matrix(
+                        gym.get_camera_view_matrix(sim, env, camera_handles[i][0])
+                    )
 
-                print("computing projection plane")
+                # print("computing projection plane")
                 p_list = np.array(np.unravel_index(np.arange(640 * 480), (480, 640))).T
                 p_list = p_list.reshape((480, 640, 2))
                 pt_cloud = deproject_point(
@@ -672,6 +675,8 @@ while True:
                     + "   30\n   40"
                 )
                 write_depth = h_downsample(pt_cloud, min_point, max_point)
+                if np.all(write_depth < -0.3):
+                    pdb.set_trace()
                 np.savetxt(
                     "depth/orth" + curr_time + f"_env{i}_frame{frame_count}.txt",
                     write_depth,
@@ -720,7 +725,8 @@ while True:
                             current_run_dict[i]["vertices"][target_obj_idx],
                         )
                     )
-                    + np.array([0, 0, -0.36]),
+                    + np.array([0, 0, -0.36])
+                    - np.array([0.02, -0.56, -0.36]),
                     fmt="%10.5f",
                     header="   8 3",
                     comments="",
