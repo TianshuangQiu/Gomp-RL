@@ -1,0 +1,6 @@
+{
+    "control_freq_inv": 200,
+    "num_envs": 100,
+    "max_force": 50,
+    "max_episode_length": 3000
+}
