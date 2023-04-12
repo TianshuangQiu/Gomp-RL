@@ -39,6 +39,7 @@ import shutil
 import json
 import itertools
 from scipy.spatial.transform import Rotation as R
+import math
 
 
 class NumpyEncoder(json.JSONEncoder):
@@ -102,14 +103,14 @@ if not args.headless:
         raise ValueError("*** Failed to create viewer")
 
 # set up the env grid
-num_envs = 32
+num_envs = 1
 spacing = 2.5
 num_per_row = int(sqrt(num_envs))
 env_lower = gymapi.Vec3(-spacing, 0.0, -spacing)
 env_upper = gymapi.Vec3(spacing, spacing, spacing)
 current_run_dict["num_envs"] = num_envs
 
-asset_root = "../../assets"
+asset_root = "assets"
 bin_options = gymapi.AssetOptions()
 bin_options.use_mesh_materials = True
 bin_options.vhacd_enabled = True
@@ -284,7 +285,10 @@ envs = []
 #     640,
 # )
 fov = 2 * np.arctan2(640, 2 * 386.5911865234375) * 180 / np.pi
-
+with open("cfg/boxes.json", "r") as r:
+    box_cfg = json.load(r)
+# box_cfg = box_cfg[:3] + box_cfg[4:6] + [box_cfg[8]]
+box_cfg = []
 # create environments
 for i in range(num_envs):
     actor_handles.append([])
@@ -297,14 +301,16 @@ for i in range(num_envs):
     current_run_dict[i]["poses"] = []
     current_run_dict[i]["sizes"] = []
     current_run_dict[i]["vertices"] = []
+    current_run_dict[i]["color"] = []
 
-    for j in range(30):
-        sizes = np.round(0.15 * np.random.random(3) + 0.05, 5)
+    for obj in box_cfg:
+        sizes = np.array(obj["dim"])
         current_run_dict[i]["sizes"].append(sizes)
         current_run_dict[i]["vertices"].append(compute_vertices(sizes))
-    # generate random dark color
-    c = 0.5 * np.random.random(3)
-    dark_color = gymapi.Vec3(c[0], c[1], c[2])
+        current_run_dict[i]["color"].append(obj["color"])
+
+    # set a gray color for bin
+    dark_color = gymapi.Vec3(0.8, 0.8, 0.8)
 
     bin_handle = gym.create_actor(
         env, bin_asset, bin_pose, "bin", i, segmentationId=segmentation_id
@@ -319,10 +325,6 @@ for i in range(num_envs):
     )
     # gym.set_rigid_body_segmentation_id(env, bin_handle, 0, segmentation_id)
     segmentation_id += 1
-
-    # generate random bright color
-    c = 0.5 + 0.5 * np.random.random(3)
-    color = gymapi.Vec3(c[0], c[1], c[2])
 
     # create jenga tower
     pose = gymapi.Transform()
@@ -343,7 +345,7 @@ for i in range(num_envs):
     #     env, ind, 0, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(0, 0, 0)
     # )
     # TESTING ENDS
-    for level in range(np.random.randint(5, 10)):
+    for level in range(math.floor(len(box_cfg) / 3)):
         # for level in range(0):
         pose.p.z += 0.2 + 0.02 * np.random.random()
         box = gym.create_box(
@@ -355,8 +357,16 @@ for i in range(num_envs):
         )
         pose.p.x = bin_position[0]
         pose.p.y = bin_position[1] + 0.05 * np.random.normal()
+        # pose.r = gymapi.Quat.from_euler_zyx(
+        #     np.random.random() * 90, np.random.random() * 90, np.random.random() * 90
+        # )
         middle = gym.create_actor(
             env, box, pose, "middle", i, segmentationId=segmentation_id
+        )
+        color = gymapi.Vec3(
+            current_run_dict[i]["color"][level * 3][0],
+            current_run_dict[i]["color"][level * 3][1],
+            current_run_dict[i]["color"][level * 3][2],
         )
         gym.set_rigid_body_color(
             env, middle, 0, gymapi.MESH_VISUAL_AND_COLLISION, color
@@ -378,8 +388,16 @@ for i in range(num_envs):
         )
         pose.p.x = bin_position[0] + 0.2 + 0.1 * np.random.random()
         pose.p.y = bin_position[1] + 0.1 * np.random.normal()
+        # pose.r = gymapi.Quat.from_euler_zyx(
+        #     np.random.random() * 90, np.random.random() * 90, np.random.random() * 90
+        # )
         left = gym.create_actor(
             env, box, pose, "left", i, segmentationId=segmentation_id
+        )
+        color = gymapi.Vec3(
+            current_run_dict[i]["color"][level * 3 + 1][0],
+            current_run_dict[i]["color"][level * 3 + 1][1],
+            current_run_dict[i]["color"][level * 3 + 1][2],
         )
         gym.set_rigid_body_color(env, left, 0, gymapi.MESH_VISUAL_AND_COLLISION, color)
         box_props = gym.get_actor_rigid_shape_properties(env, left)
@@ -399,8 +417,17 @@ for i in range(num_envs):
         )
         pose.p.x = bin_position[0] - 0.2 - 0.1 * np.random.random()
         pose.p.y = bin_position[1] + 0.1 * np.random.normal()
+        # pose.r = gymapi.Quat.from_euler_zyx(
+        #     np.random.random() * 90, np.random.random() * 90, np.random.random() * 90
+        # )
+
         right = gym.create_actor(
             env, box, pose, "right", i, segmentationId=segmentation_id
+        )
+        color = gymapi.Vec3(
+            current_run_dict[i]["color"][level * 3 + 2][0],
+            current_run_dict[i]["color"][level * 3 + 2][1],
+            current_run_dict[i]["color"][level * 3 + 2][2],
         )
         box_props = gym.get_actor_rigid_shape_properties(env, right)
         box_props[0].restitution = 0.1 + 0.05 * np.random.random()
@@ -493,7 +520,7 @@ while True:
     # render the camera sensors
     gym.render_all_camera_sensors(sim)
 
-    if frame_count < 0 or frame_count == -1:
+    if frame_count > 200 or frame_count == -1:
         for i in range(num_envs):
             state = gym.get_actor_rigid_body_states(
                 envs[i], actor_handles[i][0], gymapi.STATE_ALL
@@ -622,7 +649,7 @@ while True:
                     tsfm = RigidTransform(rot_mat, pos)
                     poses.append(np.round(tsfm.matrix, 5))
 
-                current_run_dict[i]["poses"] = poses
+                current_run_dict[i]["poses"] = poses[1:]
                 # get segmentation/ depth images
                 depth_image = gym.get_camera_image(
                     sim, envs[i], camera_handles[i][0], gymapi.IMAGE_DEPTH
@@ -655,7 +682,7 @@ while True:
                     projection_matrix,
                     none_okay=False,
                 )
-                pt_cloud += np.array([[0, 0, -0.36]])
+                pt_cloud += np.array([[0, 0, -0.42]])
 
                 # max_point = pt_cloud[639, :-1]
                 # min_point = pt_cloud[479 * 640, :-1]
@@ -717,6 +744,7 @@ while True:
                     header=header,
                     comments="",
                 )
+                pdb.set_trace()
                 np.savetxt(
                     "poses/pt" + curr_time + f"_env{i}_frame{frame_count}.txt",
                     transform_pts(
@@ -725,10 +753,10 @@ while True:
                             current_run_dict[i]["vertices"][target_obj_idx],
                         )
                     )
-                    + np.array([0, 0, -0.36])
-                    - np.array([0.02, -0.56, -0.36]),
+                    + np.array([0, 0, -0.42]),
                     fmt="%10.5f",
                     header="   8 3",
+                    footer=box_cfg[target_obj_idx]["alias"],
                     comments="",
                 )
 
