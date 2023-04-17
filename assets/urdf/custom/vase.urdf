@@ -14,7 +14,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="meshes/bar_clamp.obj" scale="2 2 2"/>
+        <mesh filename="meshes/bar_clamp.obj" scale="5 5 5"/>
       </geometry>
       <!-- <material name="tray_material">
         <color rgba="0.7 0.7 0.7 1"/>
@@ -23,7 +23,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="meshes/bar_clamp.obj" scale="2 2 2"/>
+        <mesh filename="meshes/bar_clamp.obj" scale="5 5 5"/>
       </geometry>
     </collision>
   </link>

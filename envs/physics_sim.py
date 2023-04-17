@@ -288,17 +288,20 @@ for i in range(num_envs):
     env = gym.create_env(sim, env_lower, env_upper, num_per_row)
     envs.append(env)
     current_run_dict[i] = {}
-    current_run_dict[i]["pick_pt"] = []
+    current_run_dict[i]["alias"] = []
     current_run_dict[i]["poses"] = []
     current_run_dict[i]["sizes"] = []
     current_run_dict[i]["vertices"] = []
     current_run_dict[i]["color"] = []
 
-    for obj in box_cfg:
+    # shuffle = np.random.choice(box_cfg, size=np.random.randint(10, 16))
+    shuffle = np.random.choice(box_cfg, size=np.random.randint(1, 2))
+    for obj in shuffle:
         sizes = np.array(obj["dim"])
         current_run_dict[i]["sizes"].append(sizes)
         current_run_dict[i]["vertices"].append(compute_vertices(sizes))
         current_run_dict[i]["color"].append(obj["color"])
+        current_run_dict[i]["alias"].append(obj["alias"])
 
     # set a gray color for bin
     dark_color = gymapi.Vec3(0.8, 0.8, 0.8)
@@ -336,7 +339,7 @@ for i in range(num_envs):
     # )
     # TESTING ENDS
 
-    for count, box_size in enumerate(box_cfg):
+    for count, box_size in enumerate(shuffle):
         if count % 3 == 0:
             pose.p.z += 0.2 + 0.02 * np.random.random()
             pose.p.x = bin_position[0]
@@ -460,7 +463,7 @@ while True:
     # render the camera sensors
     gym.render_all_camera_sensors(sim)
 
-    if frame_count > 200 or frame_count == -1:
+    if frame_count < 0 or frame_count == -1:
         for i in range(num_envs):
             state = gym.get_actor_rigid_body_states(
                 envs[i], actor_handles[i][0], gymapi.STATE_ALL
@@ -620,8 +623,8 @@ while True:
 
                 # max_point = pt_cloud[639, :-1]
                 # min_point = pt_cloud[479 * 640, :-1]
-                max_point = np.array([[0.53, -0.269]])
-                min_point = np.array([[-0.49, -0.831]])
+                min_point = np.array([[-0.5133333333333333, -0.9600000000000001]])
+                max_point = np.array([[0.5533333333333333, -0.16000000000000003]])
                 header = (
                     np.array2string(
                         min_point,
@@ -655,14 +658,11 @@ while True:
                     randint = np.random.randint(0, num_valid)
                     pixel = (valid_pixels[0][randint], valid_pixels[1][randint])
 
-                current_run_dict[i]["pick_pt"] = pixel
-
                 # seg ID starts at 1, bin takes up a spot
                 target_obj_idx = cropped_seg[pixel] - 2
 
                 # pos = pt_cloud[pixel[0] * 640 + pixel[1]]
                 pos = pt_cloud[pixel[0] * 540 + pixel[1]]
-                pdb.set_trace()
                 gym.apply_body_force_at_pos(
                     env,
                     actor_handles[i][target_obj_idx],
@@ -682,7 +682,6 @@ while True:
                     header=header,
                     comments="",
                 )
-                pdb.set_trace()
                 np.savetxt(
                     "poses/pt" + curr_time + f"_env{i}_frame{frame_count}.txt",
                     transform_pts(
@@ -694,7 +693,7 @@ while True:
                     + np.array([0, 0, -0.40]),
                     fmt="%10.5f",
                     header="   8 3",
-                    footer=box_cfg[target_obj_idx]["alias"],
+                    footer=current_run_dict[i]["alias"][target_obj_idx],
                     comments="",
                 )
 
