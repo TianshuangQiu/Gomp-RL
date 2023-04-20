@@ -639,15 +639,6 @@ while True:
                     + "   30\n   40"
                 )
                 write_depth = h_downsample(pt_cloud, min_point, max_point)
-                if np.all(write_depth < -0.3):
-                    pdb.set_trace()
-                np.savetxt(
-                    "depth/orth" + curr_time + f"_env{i}_frame{frame_count}.txt",
-                    write_depth,
-                    fmt="%10.5f",
-                    header=header,
-                    comments="",
-                )
                 cropped_seg = seg_image[200:, 100:]
                 valid_pixels = np.where(cropped_seg > 1)
                 num_valid = len(valid_pixels[0])
