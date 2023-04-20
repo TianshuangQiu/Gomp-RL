@@ -103,7 +103,7 @@ if not args.headless:
         raise ValueError("*** Failed to create viewer")
 
 # set up the env grid
-num_envs = 1
+num_envs = 64
 spacing = 2.5
 num_per_row = int(sqrt(num_envs))
 env_lower = gymapi.Vec3(-spacing, 0.0, -spacing)
@@ -279,7 +279,7 @@ fov = 2 * np.arctan2(640, 2 * 386.5911865234375) * 180 / np.pi
 with open("cfg/boxes.json", "r") as r:
     box_cfg = json.load(r)
 # box_cfg = box_cfg[:3] + box_cfg[4:6] + [box_cfg[8]]
-box_cfg = [box_cfg[8]]
+# box_cfg = [box_cfg[8]]
 # create environments
 for i in range(num_envs):
     actor_handles.append([])
@@ -294,8 +294,8 @@ for i in range(num_envs):
     current_run_dict[i]["vertices"] = []
     current_run_dict[i]["color"] = []
 
-    # shuffle = np.random.choice(box_cfg, size=np.random.randint(10, 16))
-    shuffle = np.random.choice(box_cfg, size=np.random.randint(1, 2))
+    shuffle = np.random.choice(box_cfg, size=np.random.randint(10, 16))
+    # shuffle = np.random.choice(box_cfg, size=np.random.randint(1, 2))
     for obj in shuffle:
         sizes = np.array(obj["dim"])
         current_run_dict[i]["sizes"].append(sizes)
@@ -311,8 +311,8 @@ for i in range(num_envs):
     )
     actor_handles[i].append(bin_handle)
     bin_props = gym.get_actor_rigid_shape_properties(env, bin_handle)
-    bin_props[0].restitution = 0
-    bin_props[0].compliance = 0
+    bin_props[0].restitution = 0.1
+    bin_props[0].compliance = 0.05
     gym.set_actor_rigid_shape_properties(env, bin_handle, bin_props)
     gym.set_rigid_body_color(
         env, bin_handle, 0, gymapi.MESH_VISUAL_AND_COLLISION, dark_color
@@ -351,9 +351,9 @@ for i in range(num_envs):
         else:
             pose.p.x = bin_position[0] - 0.2 - 0.1 * np.random.random()
             pose.p.y = bin_position[1] + 0.1 * np.random.normal()
-        # pose.r = gymapi.Quat.from_euler_zyx(
-        #     np.random.random() * 90, np.random.random() * 90, np.random.random() * 90
-        # )
+        pose.r = gymapi.Quat.from_euler_zyx(
+            np.random.random() * 90, np.random.random() * 90, np.random.random() * 90
+        )
         box = gym.create_box(
             sim,
             current_run_dict[i]["sizes"][count][0],
@@ -376,10 +376,10 @@ for i in range(num_envs):
             env, box_ptr, 0, gymapi.MESH_VISUAL_AND_COLLISION, color
         )
         box_props = gym.get_actor_rigid_shape_properties(env, box_ptr)
-        box_props[0].restitution = 0
-        box_props[0].compliance = 0
-        # box_props[0].restitution = 0.1 + 0.05 * np.random.random()
-        # box_props[0].compliance = 0.01 + 0.01 * np.random.random()
+        # box_props[0].restitution = 0
+        # box_props[0].compliance = 0
+        box_props[0].restitution = 0.1 + 0.05 * np.random.random()
+        box_props[0].compliance = 0.01 + 0.01 * np.random.random()
         gym.set_actor_rigid_shape_properties(env, box_ptr, box_props)
 
     # Create cameras in each environment
