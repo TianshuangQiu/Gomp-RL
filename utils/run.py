@@ -1,6 +1,6 @@
 import subprocess
 
-for i in range(200):
+while True:
     subprocess.run(
         [
             "python3",
@@ -9,6 +9,8 @@ for i in range(200):
             "--num_threads",
             "6",
             "--sim_device",
-            "cuda:0",
+            "cuda:1",
+            "--num_envs",
+            "60",
         ]
     )

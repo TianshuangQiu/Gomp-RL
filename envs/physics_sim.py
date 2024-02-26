@@ -72,7 +72,7 @@ gym = gymapi.acquire_gym()
 args = gymutil.parse_arguments(
     description="Graphics Example",
     headless=True,
-    custom_parameters=[],
+    custom_parameters=[{"name":"--num_envs", "type":int, "default":1}],
 )
 
 # get default params
@@ -113,7 +113,7 @@ if not args.headless:
         raise ValueError("*** Failed to create viewer")
 
 # set up the env grid
-num_envs = 4
+num_envs = args.num_envs
 spacing = 10
 num_per_row = int(sqrt(num_envs))
 env_lower = gymapi.Vec3(-spacing, 0.0, -spacing)
@@ -708,7 +708,7 @@ while True:
 
                 ##SAVE SHIT BEGINS HERE###
                 np.savetxt(
-                    "depth/orth" + curr_time + f"_env{i}_frame{frame_count}.txt",
+                    "depth/HERMES_orth" + curr_time + f"_env{i}_frame{frame_count}.txt",
                     write_depth,
                     fmt="%10.5f",
                     header=header,
@@ -716,7 +716,7 @@ while True:
                 )
                
                 np.savetxt(
-                    "poses/pt" + curr_time + f"_env{i}_frame{frame_count}.txt",
+                    "poses/HERMES_pt" + curr_time + f"_env{i}_frame{frame_count}.txt",
                     transform_pts(
                         (
                             current_run_dict[i]["poses"][target_obj_idx],
