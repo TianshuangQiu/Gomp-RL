@@ -113,7 +113,7 @@ if not args.headless:
         raise ValueError("*** Failed to create viewer")
 
 # set up the env grid
-num_envs = 1
+num_envs = 4
 spacing = 10
 num_per_row = int(sqrt(num_envs))
 env_lower = gymapi.Vec3(-spacing, 0.0, -spacing)
@@ -268,7 +268,7 @@ def remove_box(env_handle, obj_handle):
         env_handle, obj_handle, gymapi.STATE_ALL
     )
     # pdb.set_trace()
-    rm_state["pose"]["p"].fill((5, -5, 0.1))
+    rm_state["pose"]["p"].fill((-5, -5, 0.1))
     rm_state["vel"]["linear"].fill((0, 0, 0))
     gym.set_actor_rigid_body_states(
         env_handle, obj_handle, rm_state, gymapi.STATE_ALL
@@ -297,6 +297,7 @@ with open("cfg/boxes.json", "r") as r:
 # box_cfg = [box_cfg[8]]
 # create environments
 for i in range(num_envs):
+    actor_handles.append([])
     segmentation_id = 1
     # create env
     env = gym.create_env(sim, env_lower, env_upper, num_per_row)
@@ -465,7 +466,7 @@ while True:
     gym.render_all_camera_sensors(sim)
     # pdb.set_trace()
 
-    if frame_count > 0 :
+    if frame_count < 0 :
         for i in range(num_envs):
             # Get bin state
             state = gym.get_actor_rigid_body_states(
@@ -541,7 +542,7 @@ while True:
         # Check for exit condition - user closed the viewer window
         if gym.query_viewer_has_closed(viewer):
             break
-    if frame_count > 100 and frame_count < 200:
+    if frame_count == 121:
         for i in range(num_envs):
             # Check box inside bin
             for handle in range(1, len(actor_handles[i])):
@@ -561,11 +562,11 @@ while True:
                 ).reshape(4)
                 rot_mat = RigidTransform.rotation_from_quaternion(rot)
                 tsfm = RigidTransform(rot_mat, pos)
-                pts = transform_pts((tsfm, current_run_dict[i]["vertices"][handle]))[:, :2]
+                pts = transform_pts((tsfm.matrix, current_run_dict[i]["vertices"][handle-1]))[:, :2]
                 if np.all(pts[:, 0] < min_point[0, 0]) or np.all(pts[:, 0] > max_point[0, 0]) or np.all(pts[:, 1] < min_point[0, 1]) or np.all(pts[:, 1] > max_point[0, 1]):
-                    pass
+                    remove_box(envs[i], actor_handles[i][handle])
 
-    if frame_count > 200 and objects_picked < 5:
+    if frame_count > 200 and frame_count < 1000:
         if frame_count < sideways_frame:
             for i, env in enumerate(envs):
                 if dead_envs[i]:
@@ -678,18 +679,18 @@ while True:
                 # seg ID starts at 1, bin takes up a spot
                 print(f"top box found at {pixel}, targeting {seg_image[pixel] - 2}")
                 target_obj_idx = seg_image[pixel] - 2
-                segmentation_colors = []
-                for tmp in range(np.max(seg_image) + 2):
-                    if tmp == seg_image[pixel]:
-                        segmentation_colors.append(np.array([0, 0.5, 0.9]))
-                    else:
-                        segmentation_colors.append(np.array([1, 1 ,0]))
-                vis_seg = visualize_segmentation(seg_image, segmentation_colors) * 256
-                # Convert to a pillow image and write it to disk
-                vis_seg_image = im.fromarray(vis_seg.astype(np.uint8), mode="RGB")
-                vis_seg_image.save(
-                    f"seg_env{i}_cam{j}_frame{str(frame_count).zfill(4)}.jpg"
-                )
+                # segmentation_colors = []
+                # for tmp in range(np.max(seg_image) + 2):
+                #     if tmp == seg_image[pixel]:
+                #         segmentation_colors.append(np.array([0, 0.5, 0.9]))
+                #     else:
+                #         segmentation_colors.append(np.array([1, 1 ,0]))
+                # vis_seg = visualize_segmentation(seg_image, segmentation_colors) * 256
+                # # Convert to a pillow image and write it to disk
+                # vis_seg_image = im.fromarray(vis_seg.astype(np.uint8), mode="RGB")
+                # vis_seg_image.save(
+                #     f"seg_env{i}_cam{j}_frame{str(frame_count).zfill(4)}.jpg"
+                # )
                 # pdb.set_trace()
 
                 pos = pt_cloud_valid[top_pt]
@@ -746,7 +747,7 @@ while True:
                         envs[i], obj_handle[i], gymapi.STATE_ALL
                     )
                     # pdb.set_trace()
-                    rm_state["pose"]["p"].fill((-5, -5, 0.1))
+                    rm_state["pose"]["p"].fill((-5, -5, 0.7))
                     rm_state["vel"]["linear"].fill((0, 0, 0))
                     gym.set_actor_rigid_body_states(
                         envs[i], obj_handle[i], rm_state, gymapi.STATE_ALL
@@ -757,7 +758,7 @@ while True:
             objects_picked += 1
             obj_handle = [None] * num_envs
 
-    elif objects_picked >= 5:
+    elif frame_count >= 1000:
         # for i in range(num_envs):
         #     for j in range(0, 2):
         #         # Retrieve image data directly. Use this for Depth, Segmentation, and Optical Flow images
