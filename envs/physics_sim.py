@@ -63,8 +63,6 @@ def visualize_segmentation(image_array, seg_list):
     return output
 
 
-
-
 current_run_dict = {"time": str(datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))}
 
 # acquire the gym interface
@@ -115,7 +113,7 @@ if not args.headless:
         raise ValueError("*** Failed to create viewer")
 
 # set up the env grid
-num_envs = 4
+num_envs = 1
 spacing = 10
 num_per_row = int(sqrt(num_envs))
 env_lower = gymapi.Vec3(-spacing, 0.0, -spacing)
@@ -137,15 +135,8 @@ bin_pose = gymapi.Transform()
 bin_pose.p = gymapi.Vec3(bin_position[0], bin_position[1], bin_position[2])
 bin_pose.r = gymapi.Quat.from_euler_zyx(0, 0, 0)
 
-# vase_asset_file = "urdf/custom/vase.urdf"
-# print("Loading asset '%s' from '%s'" % (vase_asset_file, asset_root))
-# vase_options = gymapi.AssetOptions()
-# vase_options.use_mesh_materials = True
-# vase_options.vhacd_enabled = True
-# vase_asset = gym.load_asset(sim, asset_root, vase_asset_file, vase_options)
-# v_pose = gymapi.Transform()
-# v_pose.p = gymapi.Vec3(0.0254, -0.55, 0.1)
-# v_pose.r = gymapi.Quat.from_euler_zyx(0, 0, 0)
+min_point = np.array([[-0.5133333333333333, -0.9600000000000001]])
+max_point = np.array([[0.5533333333333333, -0.16000000000000003]])
 
 
 def visualize_depth(image_array):
@@ -271,6 +262,18 @@ def h_downsample(pt_cloud, min_pt, max_pt):
 
     return height_map[::-1]
 
+def remove_box(env_handle, obj_handle):
+    print(f"Putting away {obj_handle}")
+    rm_state = gym.get_actor_rigid_body_states(
+        env_handle, obj_handle, gymapi.STATE_ALL
+    )
+    # pdb.set_trace()
+    rm_state["pose"]["p"].fill((5, -5, 0.1))
+    rm_state["vel"]["linear"].fill((0, 0, 0))
+    gym.set_actor_rigid_body_states(
+        env_handle, obj_handle, rm_state, gymapi.STATE_ALL
+    )
+
 
 # Create environments
 actor_handles = [[]]
@@ -310,6 +313,7 @@ for i in range(num_envs):
     for obj in shuffle:
         sizes = np.array(obj["dim"])
         current_run_dict[i]["sizes"].append(sizes)
+        current_run_dict[i]["vertices"].append(compute_vertices(sizes))
         current_run_dict[i]["color"].append(obj["color"])
         current_run_dict[i]["alias"].append(obj["alias"])
 
@@ -459,17 +463,18 @@ while True:
     gym.step_graphics(sim)
     # render the camera sensors
     gym.render_all_camera_sensors(sim)
+    # pdb.set_trace()
 
     if frame_count > 0 :
         for i in range(num_envs):
             # Get bin state
             state = gym.get_actor_rigid_body_states(
-                envs[i], actor_handles[i][1], gymapi.STATE_ALL
+                envs[i], actor_handles[i][0], gymapi.STATE_ALL
             )
             original_position = state["pose"]["p"].copy()
             state["pose"]["p"].fill((5, 5, 5))
             if not gym.set_actor_rigid_body_states(
-                envs[i], actor_handles[i][1], state, gymapi.STATE_ALL
+                envs[i], actor_handles[i][0], state, gymapi.STATE_ALL
             ):
                 pdb.set_trace()
             gym.step_graphics(sim)
@@ -488,7 +493,7 @@ while True:
 
             state["pose"]["p"] = original_position
             if not gym.set_actor_rigid_body_states(
-                envs[i], actor_handles[i][1], state, gymapi.STATE_ALL
+                envs[i], actor_handles[i][0], state, gymapi.STATE_ALL
             ):
                 pdb.set_trace()
             gym.step_graphics(sim)
@@ -536,10 +541,32 @@ while True:
         # Check for exit condition - user closed the viewer window
         if gym.query_viewer_has_closed(viewer):
             break
+    if frame_count > 100 and frame_count < 200:
+        for i in range(num_envs):
+            # Check box inside bin
+            for handle in range(1, len(actor_handles[i])):
+                pose = gym.get_actor_rigid_body_states(
+                    envs[i], actor_handles[i][handle], gymapi.STATE_ALL
+                )["pose"]
+                pos = np.array(
+                        [pose["p"]["x"], pose["p"]["y"], pose["p"]["z"]]
+                    ).reshape(3)
+                rot = np.array(
+                    [
+                        pose["r"]["w"],
+                        pose["r"]["x"],
+                        pose["r"]["y"],
+                        pose["r"]["z"],
+                    ]
+                ).reshape(4)
+                rot_mat = RigidTransform.rotation_from_quaternion(rot)
+                tsfm = RigidTransform(rot_mat, pos)
+                pts = transform_pts((tsfm, current_run_dict[i]["vertices"][handle]))[:, :2]
+                if np.all(pts[:, 0] < min_point[0, 0]) or np.all(pts[:, 0] > max_point[0, 0]) or np.all(pts[:, 1] < min_point[0, 1]) or np.all(pts[:, 1] > max_point[0, 1]):
+                    pass
 
-    if frame_count > 200 and objects_picked < 20:
+    if frame_count > 200 and objects_picked < 5:
         if frame_count < sideways_frame:
-            print("lifting")
             for i, env in enumerate(envs):
                 if dead_envs[i]:
                     continue
@@ -599,10 +626,9 @@ while True:
                 projection_matrix = np.matrix(
                     gym.get_camera_proj_matrix(sim, env, camera_handles[i][0])
                 )
-                if view_matrix is None:
-                    view_matrix = np.matrix(
-                        gym.get_camera_view_matrix(sim, env, camera_handles[i][0])
-                    )
+                view_matrix = np.matrix(
+                    gym.get_camera_view_matrix(sim, env, camera_handles[i][0])
+                )
 
                 # print("computing projection plane")
                 p_list = np.array(np.unravel_index(np.arange(640 * 480), (480, 640))).T
@@ -621,8 +647,6 @@ while True:
 
                 # max_point = pt_cloud[639, :-1]
                 # min_point = pt_cloud[479 * 640, :-1]
-                min_point = np.array([[-0.5133333333333333, -0.9600000000000001]])
-                max_point = np.array([[0.5533333333333333, -0.16000000000000003]])
                 header = (
                     np.array2string(
                         min_point,
@@ -652,32 +676,32 @@ while True:
                     pixel = (pixel[0], pixel[1])
 
                 # seg ID starts at 1, bin takes up a spot
-                print(pixel)
+                print(f"top box found at {pixel}, targeting {seg_image[pixel] - 2}")
                 target_obj_idx = seg_image[pixel] - 2
-                # segmentation_colors = []
-                # for tmp in range(np.max(seg_image) + 2):
-                #     if tmp == seg_image[pixel]:
-                #         segmentation_colors.append(np.array([0, 0.5, 0.9]))
-                #     else:
-                #         segmentation_colors.append(np.array([1, 1 ,0]))
-                # vis_seg = visualize_segmentation(seg_image, segmentation_colors) * 256
-                # # Convert to a pillow image and write it to disk
-                # vis_seg_image = im.fromarray(vis_seg.astype(np.uint8), mode="RGB")
-                # vis_seg_image.save(
-                #     f"seg_env{i}_cam{j}_frame{str(frame_count).zfill(4)}.jpg"
-                # )
+                segmentation_colors = []
+                for tmp in range(np.max(seg_image) + 2):
+                    if tmp == seg_image[pixel]:
+                        segmentation_colors.append(np.array([0, 0.5, 0.9]))
+                    else:
+                        segmentation_colors.append(np.array([1, 1 ,0]))
+                vis_seg = visualize_segmentation(seg_image, segmentation_colors) * 256
+                # Convert to a pillow image and write it to disk
+                vis_seg_image = im.fromarray(vis_seg.astype(np.uint8), mode="RGB")
+                vis_seg_image.save(
+                    f"seg_env{i}_cam{j}_frame{str(frame_count).zfill(4)}.jpg"
+                )
                 # pdb.set_trace()
 
                 pos = pt_cloud_valid[top_pt]
                 # pos = pt_cloud[pixel[0] * 540 + pixel[1]]
                 gym.apply_body_forces(
                     env,
-                    actor_handles[i][target_obj_idx],
+                    actor_handles[i][target_obj_idx+1],
                     gymapi.Vec3(0, 0, 70),
                     None,
                     gymapi.ENV_SPACE,
                 )
-                obj_handle[i] = actor_handles[i][target_obj_idx]
+                obj_handle[i] = actor_handles[i][target_obj_idx+1]
 
                 sideways_frame = frame_count + 100
 
@@ -689,12 +713,13 @@ while True:
                     header=header,
                     comments="",
                 )
+               
                 np.savetxt(
                     "poses/pt" + curr_time + f"_env{i}_frame{frame_count}.txt",
                     transform_pts(
                         (
-                            current_run_dict[i]["poses"][seg_image[pixel]],
-                            current_run_dict[i]["vertices"][seg_image[pixel]],
+                            current_run_dict[i]["poses"][target_obj_idx],
+                            current_run_dict[i]["vertices"][target_obj_idx],
                         )
                     )
                     + np.array([0, 0, -0.40]),
@@ -703,7 +728,7 @@ while True:
                     footer=current_run_dict[i]["alias"][target_obj_idx],
                     comments="",
                 )
-
+                # pdb.set_trace()
                 # with open(
                 #     "logs/run_" + curr_time + f"_env{i}_frame{frame_count}.json",
                 #     "w",
@@ -713,8 +738,10 @@ while True:
                 del pt_cloud
 
         elif sideways_frame == frame_count:
+            # Putting obj aside
             for i, env in enumerate(envs):
                 if obj_handle[i] is not None:
+                    print(f"Putting away {obj_handle[i]}")
                     rm_state = gym.get_actor_rigid_body_states(
                         envs[i], obj_handle[i], gymapi.STATE_ALL
                     )
