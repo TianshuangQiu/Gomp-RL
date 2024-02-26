@@ -52,6 +52,18 @@ class NumpyEncoder(json.JSONEncoder):
             return float(obj)
         return json.JSONEncoder.default(self, obj)
 
+def visualize_segmentation(image_array, seg_list):
+    output = np.zeros(shape=(image_array.shape[0], image_array.shape[1], 3))
+    for i in range(image_array.shape[0]):
+        for j in range(image_array.shape[1]):
+            if image_array[i][j] > 0:
+                output[i][j] = seg_list[image_array[i][j]]
+            else:
+                output[i][j] = np.array([0, 0, 0])
+    return output
+
+
+
 
 current_run_dict = {"time": str(datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))}
 
@@ -103,8 +115,8 @@ if not args.headless:
         raise ValueError("*** Failed to create viewer")
 
 # set up the env grid
-num_envs = 64
-spacing = 2.5
+num_envs = 4
+spacing = 10
 num_per_row = int(sqrt(num_envs))
 env_lower = gymapi.Vec3(-spacing, 0.0, -spacing)
 env_upper = gymapi.Vec3(spacing, spacing, spacing)
@@ -282,7 +294,6 @@ with open("cfg/boxes.json", "r") as r:
 # box_cfg = [box_cfg[8]]
 # create environments
 for i in range(num_envs):
-    actor_handles.append([])
     segmentation_id = 1
     # create env
     env = gym.create_env(sim, env_lower, env_upper, num_per_row)
@@ -299,7 +310,6 @@ for i in range(num_envs):
     for obj in shuffle:
         sizes = np.array(obj["dim"])
         current_run_dict[i]["sizes"].append(sizes)
-        current_run_dict[i]["vertices"].append(compute_vertices(sizes))
         current_run_dict[i]["color"].append(obj["color"])
         current_run_dict[i]["alias"].append(obj["alias"])
 
@@ -311,7 +321,7 @@ for i in range(num_envs):
     )
     actor_handles[i].append(bin_handle)
     bin_props = gym.get_actor_rigid_shape_properties(env, bin_handle)
-    bin_props[0].restitution = 0.1
+    bin_props[0].restitution = 0.05
     bin_props[0].compliance = 0.05
     gym.set_actor_rigid_shape_properties(env, bin_handle, bin_props)
     gym.set_rigid_body_color(
@@ -323,25 +333,10 @@ for i in range(num_envs):
     pose = gymapi.Transform()
     pose.p = gymapi.Vec3(0, 0, 0)
 
-    # Testing
-    # indicator = gym.create_box(sim, 0.05, 0.05, 0.05, bin_options)
-    # ind_tsfm = gymapi.Transform()
-    # ind_tsfm.p = gymapi.Vec3(-1.27103, -1.17050, 0.03)
-    # ind = gym.create_actor(
-    #     env,
-    #     indicator,
-    #     ind_tsfm,
-    #     "ind",
-    #     9,
-    # )
-    # gym.set_rigid_body_color(
-    #     env, ind, 0, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(0, 0, 0)
-    # )
-    # TESTING ENDS
 
     for count, box_size in enumerate(shuffle):
         if count % 3 == 0:
-            pose.p.z += 0.2 + 0.02 * np.random.random()
+            pose.p.z += 0.3 + 0.02 * np.random.random()
             pose.p.x = bin_position[0]
             pose.p.y = bin_position[1]
             # pose.p.y = bin_position[1] + 0.05 * np.random.normal()
@@ -354,12 +349,14 @@ for i in range(num_envs):
         pose.r = gymapi.Quat.from_euler_zyx(
             np.random.random() * 90, np.random.random() * 90, np.random.random() * 90
         )
+        box_options = gymapi.AssetOptions()
+        box_options.density = 100
         box = gym.create_box(
             sim,
             current_run_dict[i]["sizes"][count][0],
             current_run_dict[i]["sizes"][count][1],
             current_run_dict[i]["sizes"][count][2],
-            gymapi.AssetOptions(),
+            box_options,
         )
         box_ptr = gym.create_actor(
             env, box, pose, "box", i, segmentationId=segmentation_id
@@ -439,11 +436,11 @@ for i in range(num_envs):
 
 if os.path.exists("graphics_images"):
     shutil.rmtree("graphics_images")
-    os.mkdir("graphics_images")
+os.mkdir("graphics_images")
 
-# if os.path.exists("poses"):
-#     shutil.rmtree("poses")
-#     os.mkdir("poses")
+
+os.makedirs("poses", exist_ok=True)
+os.makedirs("depth", exist_ok=True)
 
 frame_count = 0
 
@@ -463,15 +460,16 @@ while True:
     # render the camera sensors
     gym.render_all_camera_sensors(sim)
 
-    if frame_count < 0 or frame_count == -1:
+    if frame_count > 0 :
         for i in range(num_envs):
+            # Get bin state
             state = gym.get_actor_rigid_body_states(
-                envs[i], actor_handles[i][0], gymapi.STATE_ALL
+                envs[i], actor_handles[i][1], gymapi.STATE_ALL
             )
             original_position = state["pose"]["p"].copy()
             state["pose"]["p"].fill((5, 5, 5))
             if not gym.set_actor_rigid_body_states(
-                envs[i], actor_handles[i][0], state, gymapi.STATE_ALL
+                envs[i], actor_handles[i][1], state, gymapi.STATE_ALL
             ):
                 pdb.set_trace()
             gym.step_graphics(sim)
@@ -490,7 +488,7 @@ while True:
 
             state["pose"]["p"] = original_position
             if not gym.set_actor_rigid_body_states(
-                envs[i], actor_handles[i][0], state, gymapi.STATE_ALL
+                envs[i], actor_handles[i][1], state, gymapi.STATE_ALL
             ):
                 pdb.set_trace()
             gym.step_graphics(sim)
@@ -507,7 +505,7 @@ while True:
                 )
             depth_image = gym.get_camera_image(
                 sim, envs[i], camera_handles[i][0], gymapi.IMAGE_DEPTH
-            )[200:, 100:]
+            )
             seg_image = gym.get_camera_image(
                 sim, envs[i], camera_handles[i][0], gymapi.IMAGE_SEGMENTATION
             )
@@ -612,8 +610,8 @@ while True:
                 pt_cloud = deproject_point(
                     640,
                     480,
-                    p_list[200:, 100:].reshape((-1, 2)),
-                    depth_image[200:, 100:],
+                    p_list.reshape((-1, 2)),
+                    depth_image,
                     seg_image,
                     view_matrix,
                     projection_matrix,
@@ -639,26 +637,44 @@ while True:
                     + "   30\n   40"
                 )
                 write_depth = h_downsample(pt_cloud, min_point, max_point)
-                cropped_seg = seg_image[200:, 100:]
-                valid_pixels = np.where(cropped_seg > 1)
+                valid_pixels = np.where(seg_image > 1)
                 num_valid = len(valid_pixels[0])
                 if num_valid == 0:
                     dead_envs[i] = True
                     break
                 else:
-                    randint = np.random.randint(0, num_valid)
-                    pixel = (valid_pixels[0][randint], valid_pixels[1][randint])
+                    valid_pixel_array = np.vstack(valid_pixels).T
+                    valid_point_idx = np.ravel_multi_index(np.vstack(valid_pixels),(480,640))
+                    pt_cloud_valid = pt_cloud[valid_point_idx]
+                    top_pt = np.argmax(pt_cloud_valid[:, 2])
+                    # Depth and RGB are flipped
+                    pixel = valid_pixel_array[top_pt]
+                    pixel = (pixel[0], pixel[1])
 
                 # seg ID starts at 1, bin takes up a spot
-                target_obj_idx = cropped_seg[pixel] - 2
+                print(pixel)
+                target_obj_idx = seg_image[pixel] - 2
+                # segmentation_colors = []
+                # for tmp in range(np.max(seg_image) + 2):
+                #     if tmp == seg_image[pixel]:
+                #         segmentation_colors.append(np.array([0, 0.5, 0.9]))
+                #     else:
+                #         segmentation_colors.append(np.array([1, 1 ,0]))
+                # vis_seg = visualize_segmentation(seg_image, segmentation_colors) * 256
+                # # Convert to a pillow image and write it to disk
+                # vis_seg_image = im.fromarray(vis_seg.astype(np.uint8), mode="RGB")
+                # vis_seg_image.save(
+                #     f"seg_env{i}_cam{j}_frame{str(frame_count).zfill(4)}.jpg"
+                # )
+                # pdb.set_trace()
 
-                # pos = pt_cloud[pixel[0] * 640 + pixel[1]]
-                pos = pt_cloud[pixel[0] * 540 + pixel[1]]
-                gym.apply_body_force_at_pos(
+                pos = pt_cloud_valid[top_pt]
+                # pos = pt_cloud[pixel[0] * 540 + pixel[1]]
+                gym.apply_body_forces(
                     env,
                     actor_handles[i][target_obj_idx],
-                    gymapi.Vec3(0, 0, 75),
-                    gymapi.Vec3(pos[0, 0], pos[0, 1], pos[0, 2]),
+                    gymapi.Vec3(0, 0, 70),
+                    None,
                     gymapi.ENV_SPACE,
                 )
                 obj_handle[i] = actor_handles[i][target_obj_idx]
@@ -677,8 +693,8 @@ while True:
                     "poses/pt" + curr_time + f"_env{i}_frame{frame_count}.txt",
                     transform_pts(
                         (
-                            current_run_dict[i]["poses"][target_obj_idx],
-                            current_run_dict[i]["vertices"][target_obj_idx],
+                            current_run_dict[i]["poses"][seg_image[pixel]],
+                            current_run_dict[i]["vertices"][seg_image[pixel]],
                         )
                     )
                     + np.array([0, 0, -0.40]),
@@ -703,12 +719,11 @@ while True:
                         envs[i], obj_handle[i], gymapi.STATE_ALL
                     )
                     # pdb.set_trace()
-                    if rm_state["pose"]["p"]["z"] > 1:
-                        rm_state["pose"]["p"].fill((-2, -2, 1))
-                        rm_state["vel"]["linear"].fill((0, 0, 0))
-                        gym.set_actor_rigid_body_states(
-                            envs[i], obj_handle[i], rm_state, gymapi.STATE_ALL
-                        )
+                    rm_state["pose"]["p"].fill((-5, -5, 0.1))
+                    rm_state["vel"]["linear"].fill((0, 0, 0))
+                    gym.set_actor_rigid_body_states(
+                        envs[i], obj_handle[i], rm_state, gymapi.STATE_ALL
+                    )
 
         else:
             sideways_frame = -1
@@ -746,7 +761,7 @@ while True:
 
     frame_count = frame_count + 1
 
-    print(frame_count, datetime.now())
+    # print(frame_count, datetime.now())
 
 # with open(
 #     "poses/run_" + datetime.now().strftime("%Y-%m-%d-%H-%M-%S") + ".json", "w"
