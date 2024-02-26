@@ -6,11 +6,11 @@ while True:
             "python3",
             "envs/physics_sim.py",
             "--headless",
-            "--num_threads",
-            "6",
             "--sim_device",
-            "cuda:1",
+            "cuda:0",
             "--num_envs",
-            "60",
+            "4",
+            "--prefix",
+            "HERMES1",
         ]
     )

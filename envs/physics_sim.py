@@ -72,7 +72,7 @@ gym = gymapi.acquire_gym()
 args = gymutil.parse_arguments(
     description="Graphics Example",
     headless=True,
-    custom_parameters=[{"name":"--num_envs", "type":int, "default":1}],
+    custom_parameters=[{"name":"--num_envs", "type":int, "default":1}, {"name":"--prefix", "type":str, "default":""}],
 )
 
 # get default params
@@ -708,7 +708,7 @@ while True:
 
                 ##SAVE SHIT BEGINS HERE###
                 np.savetxt(
-                    "depth/HERMES_orth" + curr_time + f"_env{i}_frame{frame_count}.txt",
+                    f"depth/{args.prefix}_orth" + curr_time + f"_env{i}_frame{frame_count}.txt",
                     write_depth,
                     fmt="%10.5f",
                     header=header,
@@ -716,7 +716,7 @@ while True:
                 )
                
                 np.savetxt(
-                    "poses/HERMES_pt" + curr_time + f"_env{i}_frame{frame_count}.txt",
+                    f"poses/{args.prefix}_pt" + curr_time + f"_env{i}_frame{frame_count}.txt",
                     transform_pts(
                         (
                             current_run_dict[i]["poses"][target_obj_idx],
