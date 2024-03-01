@@ -114,7 +114,7 @@ if not args.headless:
 
 # set up the env grid
 num_envs = args.num_envs
-spacing = 10
+spacing = 5
 num_per_row = int(sqrt(num_envs))
 env_lower = gymapi.Vec3(-spacing, 0.0, -spacing)
 env_upper = gymapi.Vec3(spacing, spacing, spacing)
@@ -130,13 +130,13 @@ bin_options.fix_base_link = True
 bin_asset_file = "urdf/custom/cardboardbin.urdf"
 print("Loading asset '%s' from '%s'" % (bin_asset_file, asset_root))
 bin_asset = gym.load_asset(sim, asset_root, bin_asset_file, bin_options)
-bin_position = (0.0254, -0.55, 0)
+bin_position = (-0.308, 0.51, 0)
 bin_pose = gymapi.Transform()
 bin_pose.p = gymapi.Vec3(bin_position[0], bin_position[1], bin_position[2])
 bin_pose.r = gymapi.Quat.from_euler_zyx(0, 0, 0)
 
-min_point = np.array([[-0.5133333333333333, -0.9600000000000001]])
-max_point = np.array([[0.5533333333333333, -0.16000000000000003]])
+min_point = np.array([[-0.816, 0.23]])
+max_point = np.array([[0.2, -0.51]])
 
 
 def visualize_depth(image_array):
@@ -259,6 +259,8 @@ def h_downsample(pt_cloud, min_pt, max_pt):
             height_map[idx] = min_val
         else:
             height_map[idx] = np.max(heights)
+            
+    np.nan_to_num(height_map, copy=False, nan=min_val)
 
     return height_map[::-1]
 
@@ -268,7 +270,7 @@ def remove_box(env_handle, obj_handle):
         env_handle, obj_handle, gymapi.STATE_ALL
     )
     # pdb.set_trace()
-    rm_state["pose"]["p"].fill((-5, -5, 0.1))
+    rm_state["pose"]["p"].fill((-2, -2, 0.1))
     rm_state["vel"]["linear"].fill((0, 0, 0))
     gym.set_actor_rigid_body_states(
         env_handle, obj_handle, rm_state, gymapi.STATE_ALL
@@ -290,7 +292,7 @@ envs = []
 #     480,
 #     640,
 # )
-fov = 2 * np.arctan2(640, 2 * 386.5911865234375) * 180 / np.pi
+fov = 2 * np.arctan2(640, 2 * 386.11419677734375) * 180 / np.pi
 with open("cfg/boxes.json", "r") as r:
     box_cfg = json.load(r)
 # box_cfg = box_cfg[:3] + box_cfg[4:6] + [box_cfg[8]]
@@ -309,8 +311,7 @@ for i in range(num_envs):
     current_run_dict[i]["vertices"] = []
     current_run_dict[i]["color"] = []
 
-    shuffle = np.random.choice(box_cfg, size=np.random.randint(10, 16))
-    # shuffle = np.random.choice(box_cfg, size=np.random.randint(1, 2))
+    shuffle = np.random.choice(box_cfg, size=np.random.randint(25, 35), replace=True)
     for obj in shuffle:
         sizes = np.array(obj["dim"])
         current_run_dict[i]["sizes"].append(sizes)
@@ -397,21 +398,16 @@ for i in range(num_envs):
     # position and target location are in the coordinate frame of the environment
     h1 = gym.create_camera_sensor(envs[i], camera_properties)
     camera_transform = gymapi.Transform()
-    camera_transform.p = gymapi.Vec3(-0.093956, -0.381233, 1.06595 + 0.36)
-    rotation_matrix = (
-        R.from_euler("z", 90, degrees=True).as_matrix()
-        @ R.from_euler("y", 90, degrees=True).as_matrix()
-        @ R.from_euler("x", 180, degrees=True).as_matrix()
-        @ np.linalg.inv(
-            np.array(
+    camera_transform.p = gymapi.Vec3(-0.12, 0.29, 1.37)
+    rotation_matrix = np.array(
                 [
-                    [0.999346, -0.001493, -0.036126],
-                    [-0.002240, -0.999785, -0.020626],
-                    [-0.036087, 0.020693, -0.999134],
+                    [-1, 0, 0],
+                    [ 0, 0.98480775, 0.17364818],
+                    [0, 0.17364818, -0.98480775],
                 ]
             )
-        )
-    )
+        
+    
     tf = RigidTransform(rotation_matrix)
     quat = tf.quaternion
     camera_transform.r = gymapi.Quat(quat[1], quat[2], quat[3], quat[0])
@@ -466,7 +462,7 @@ while True:
     gym.render_all_camera_sensors(sim)
     # pdb.set_trace()
 
-    if frame_count < 0 :
+    if frame_count > 0 :
         for i in range(num_envs):
             # Get bin state
             state = gym.get_actor_rigid_body_states(
@@ -627,9 +623,10 @@ while True:
                 projection_matrix = np.matrix(
                     gym.get_camera_proj_matrix(sim, env, camera_handles[i][0])
                 )
-                view_matrix = np.matrix(
-                    gym.get_camera_view_matrix(sim, env, camera_handles[i][0])
-                )
+                if view_matrix is None:
+                    view_matrix = np.matrix(
+                        gym.get_camera_view_matrix(sim, env, camera_handles[i][0])
+                    )
 
                 # print("computing projection plane")
                 p_list = np.array(np.unravel_index(np.arange(640 * 480), (480, 640))).T
@@ -708,15 +705,15 @@ while True:
 
                 ##SAVE SHIT BEGINS HERE###
                 np.savetxt(
-                    f"depth/{args.prefix}_orth" + curr_time + f"_env{i}_frame{frame_count}.txt",
-                    write_depth,
+                    f"depth/depth_{args.prefix}_" + curr_time + f"_env{i}_frame{frame_count}.txt",
+                    write_depth + np.random.normal(0, 0.01, size=write_depth.shape),
                     fmt="%10.5f",
                     header=header,
                     comments="",
                 )
                
                 np.savetxt(
-                    f"poses/{args.prefix}_pt" + curr_time + f"_env{i}_frame{frame_count}.txt",
+                    f"poses/vert_{args.prefix}_" + curr_time + f"_env{i}_frame{frame_count}.txt",
                     transform_pts(
                         (
                             current_run_dict[i]["poses"][target_obj_idx],
@@ -747,7 +744,7 @@ while True:
                         envs[i], obj_handle[i], gymapi.STATE_ALL
                     )
                     # pdb.set_trace()
-                    rm_state["pose"]["p"].fill((-5, -5, 0.7))
+                    rm_state["pose"]["p"].fill((-2, -2, 0.7))
                     rm_state["vel"]["linear"].fill((0, 0, 0))
                     gym.set_actor_rigid_body_states(
                         envs[i], obj_handle[i], rm_state, gymapi.STATE_ALL
