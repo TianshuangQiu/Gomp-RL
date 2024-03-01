@@ -136,7 +136,7 @@ bin_pose.p = gymapi.Vec3(bin_position[0], bin_position[1], bin_position[2])
 bin_pose.r = gymapi.Quat.from_euler_zyx(0, 0, 0)
 
 min_point = np.array([[-0.816, 0.23]])
-max_point = np.array([[0.2, -0.51]])
+max_point = np.array([[0.2, 0.51]])
 
 
 def visualize_depth(image_array):
@@ -292,7 +292,7 @@ envs = []
 #     480,
 #     640,
 # )
-fov = 2 * np.arctan2(640, 2 * 386.11419677734375) * 180 / np.pi
+fov = 2 * np.arctan2(640, 2 * 384.31756591796875) * 180 / np.pi
 with open("cfg/boxes.json", "r") as r:
     box_cfg = json.load(r)
 # box_cfg = box_cfg[:3] + box_cfg[4:6] + [box_cfg[8]]
@@ -399,13 +399,17 @@ for i in range(num_envs):
     h1 = gym.create_camera_sensor(envs[i], camera_properties)
     camera_transform = gymapi.Transform()
     camera_transform.p = gymapi.Vec3(-0.12, 0.29, 1.37)
-    rotation_matrix = np.array(
+    rotation_matrix = (R.from_euler("z", 90, degrees=True).as_matrix()
+        @ R.from_euler("y", -90, degrees=True).as_matrix()
+        # @ R.from_euler("x", 180, degrees=True).as_matrix()
+        @ np.array(
                 [
                     [-1, 0, 0],
                     [ 0, 0.98480775, 0.17364818],
                     [0, 0.17364818, -0.98480775],
                 ]
             )
+        )
         
     
     tf = RigidTransform(rotation_matrix)
@@ -422,7 +426,7 @@ for i in range(num_envs):
 
     overhead_cam = gym.create_camera_sensor(envs[i], camera_properties)
     overhead_tsfm = gymapi.Transform()
-    overhead_tsfm.p = gymapi.Vec3(0.0254, -0.56, 1.06595 + 0.36)
+    overhead_tsfm.p = gymapi.Vec3(-0.12, 0.29, 1.06595 + 0.36)
     # overhead_tsfm.p = gymapi.Vec3(0.02, -0.56, 1.06595 + 0.36)
     overhead_r = (
         R.from_euler("z", 90, degrees=True).as_matrix()
