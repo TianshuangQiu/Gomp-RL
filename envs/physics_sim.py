@@ -311,7 +311,7 @@ for i in range(num_envs):
     current_run_dict[i]["vertices"] = []
     current_run_dict[i]["color"] = []
 
-    shuffle = np.random.choice(box_cfg, size=np.random.randint(20, 21), replace=True)
+    shuffle = np.random.choice(box_cfg, size=np.random.randint(20, 35), replace=True)
     for obj in shuffle:
         sizes = np.array(obj["dim"])
         current_run_dict[i]["sizes"].append(sizes)
@@ -473,14 +473,14 @@ while True:
     gym.render_all_camera_sensors(sim)
     # pdb.set_trace()
 
-    if frame_count < 0 :
+    if frame_count > 0 :
         for i in range(num_envs):
             # Get bin state
             state = gym.get_actor_rigid_body_states(
                 envs[i], actor_handles[i][0], gymapi.STATE_ALL
             )
             original_position = state["pose"]["p"].copy()
-            state["pose"]["p"].fill((5, 5, 5))
+            state["pose"]["p"].fill((2.5, 2.5, 5))
             if not gym.set_actor_rigid_body_states(
                 envs[i], actor_handles[i][0], state, gymapi.STATE_ALL
             ):
@@ -573,7 +573,7 @@ while True:
                 if np.all(pts[:, 0] < min_point[0, 0]) or np.all(pts[:, 0] > max_point[0, 0]) or np.all(pts[:, 1] < min_point[0, 1]) or np.all(pts[:, 1] > max_point[0, 1]):
                     remove_box(envs[i], actor_handles[i][handle])
 
-    if frame_count > 200 and frame_count < 1000:
+    if frame_count > 200 and frame_count < 1024:
         if frame_count < sideways_frame:
             for i, env in enumerate(envs):
                 if dead_envs[i]:
@@ -717,7 +717,7 @@ while True:
                 ##SAVE SHIT BEGINS HERE###
                 np.savetxt(
                     f"{args.prefix}/depth/{args.prefix}_" + curr_time + f"_env{i}_frame{frame_count}.depth",
-                    write_depth + np.random.normal(0, 0.01, write_depth.shape),
+                    write_depth[::-1, ::-1] + np.random.normal(0, 0.01, write_depth.shape),
                     fmt="%10.5f",
                     header=header,
                     comments="",
@@ -730,7 +730,7 @@ while True:
                             current_run_dict[i]["poses"][target_obj_idx],
                             current_run_dict[i]["vertices"][target_obj_idx],
                         )
-                    )
+                    ) * np.array([-1, -1, 1])
                     + np.array([0, 0, -0.34]),
                     fmt="%10.5f",
                     header="   8 3",
@@ -754,7 +754,7 @@ while True:
                         envs[i], obj_handle[i], gymapi.STATE_ALL
                     )
                     # pdb.set_trace()
-                    rm_state["pose"]["p"].fill((-5, -5, 0.7))
+                    rm_state["pose"]["p"].fill((-2.5, -2.5, 0.7))
                     rm_state["vel"]["linear"].fill((0, 0, 0))
                     gym.set_actor_rigid_body_states(
                         envs[i], obj_handle[i], rm_state, gymapi.STATE_ALL
@@ -765,7 +765,7 @@ while True:
             objects_picked += 1
             obj_handle = [None] * num_envs
 
-    elif frame_count >= 1000:
+    elif frame_count >= 1024:
         # for i in range(num_envs):
         #     for j in range(0, 2):
         #         # Retrieve image data directly. Use this for Depth, Segmentation, and Optical Flow images
