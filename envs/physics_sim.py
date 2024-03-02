@@ -74,6 +74,7 @@ args = gymutil.parse_arguments(
     headless=True,
     custom_parameters=[{"name":"--num_envs", "type":int, "default":1}, {"name":"--prefix", "type":str, "default":""}],
 )
+os.makedirs(args.prefix, exist_ok=True)
 
 # get default params
 sim_params = gymapi.SimParams()
@@ -135,8 +136,8 @@ bin_pose = gymapi.Transform()
 bin_pose.p = gymapi.Vec3(bin_position[0], bin_position[1], bin_position[2])
 bin_pose.r = gymapi.Quat.from_euler_zyx(0, 0, 0)
 
-min_point = np.array([[-0.846733, 0.1]])
-max_point = np.array([[0.2199333, 0.9]])
+min_point = np.array([[-0.816, 0.2291]])
+max_point = np.array([[0.2,  0.7909]])
 
 
 
@@ -292,7 +293,7 @@ envs = []
 #     640,
 # )
 fov = 2 * np.arctan2(640, 2 * 386.5911865234375) * 180 / np.pi
-with open("cfg/unif_box.json", "r") as r:
+with open("cfg/boxes.json", "r") as r:
     box_cfg = json.load(r)
 # box_cfg = box_cfg[:3] + box_cfg[4:6] + [box_cfg[8]]
 # box_cfg = [box_cfg[8]]
@@ -310,7 +311,7 @@ for i in range(num_envs):
     current_run_dict[i]["vertices"] = []
     current_run_dict[i]["color"] = []
 
-    shuffle = np.random.choice(box_cfg, size=np.random.randint(100, 101), replace=True)
+    shuffle = np.random.choice(box_cfg, size=np.random.randint(20, 21), replace=True)
     for obj in shuffle:
         sizes = np.array(obj["dim"])
         current_run_dict[i]["sizes"].append(sizes)
@@ -450,8 +451,8 @@ if os.path.exists("graphics_images"):
 os.mkdir("graphics_images")
 
 
-os.makedirs("poses", exist_ok=True)
-os.makedirs("depth", exist_ok=True)
+os.makedirs(f"{args.prefix}/poses", exist_ok=True)
+os.makedirs(f"{args.prefix}/depth", exist_ok=True)
 
 frame_count = 0
 
@@ -623,7 +624,6 @@ while True:
                 depth_image = gym.get_camera_image(
                     sim, envs[i], camera_handles[i][0], gymapi.IMAGE_DEPTH
                 )
-                np.save(f"debug/{args.prefix}_orth" + current_run_dict["time"] + f"_env{i}_frame{frame_count}.npy", depth_image)
                 seg_image = gym.get_camera_image(
                     sim, envs[i], camera_handles[i][0], gymapi.IMAGE_SEGMENTATION
                 )
@@ -658,12 +658,12 @@ while True:
                 # min_point = pt_cloud[479 * 640, :-1]
                 header = (
                     np.array2string(
-                        min_point,
+                        -max_point,
                         formatter={"float_kind": lambda x: "%10.5f" % x},
                     )[2:-2]
                     + "\n"
                     + np.array2string(
-                        max_point,
+                        -min_point,
                         formatter={"float_kind": lambda x: "%10.5f" % x},
                     )[2:-2]
                     + "\n"
@@ -716,7 +716,7 @@ while True:
 
                 ##SAVE SHIT BEGINS HERE###
                 np.savetxt(
-                    f"depth/{args.prefix}_" + curr_time + f"_env{i}_frame{frame_count}.depth",
+                    f"{args.prefix}/depth/{args.prefix}_" + curr_time + f"_env{i}_frame{frame_count}.depth",
                     write_depth + np.random.normal(0, 0.01, write_depth.shape),
                     fmt="%10.5f",
                     header=header,
@@ -724,7 +724,7 @@ while True:
                 )
                
                 np.savetxt(
-                    f"poses/{args.prefix}_" + curr_time + f"_env{i}_frame{frame_count}.vert",
+                    f"{args.prefix}/poses/{args.prefix}_" + curr_time + f"_env{i}_frame{frame_count}.vert",
                     transform_pts(
                         (
                             current_run_dict[i]["poses"][target_obj_idx],
@@ -737,7 +737,6 @@ while True:
                     footer=current_run_dict[i]["alias"][target_obj_idx],
                     comments="",
                 )
-                # pdb.set_trace()
                 # with open(
                 #     "logs/run_" + curr_time + f"_env{i}_frame{frame_count}.json",
                 #     "w",

@@ -132,3 +132,8 @@ depth
 graphics_images
 poses
 *.csv
+debug/*
+HERMES*/
+MASON*/
+BATCHED/
+videos
