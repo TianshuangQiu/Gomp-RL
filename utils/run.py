@@ -14,13 +14,13 @@ while True:
             "--sim_device",
             "cuda:0",
             "--num_envs",
-            "1",
+            "4",
             "--prefix",
             prefix,
         ]
     )
     counter += 1
-    if counter % 1000 == 0:
+    if counter % 100 == 0:
         counter = 0
         total_amount = len(os.listdir("BATCHED")) + 1
         os.makedirs(f"BATCHED/{total_amount}/poses", exist_ok=True)

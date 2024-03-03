@@ -293,7 +293,7 @@ envs = []
 #     640,
 # )
 fov = 2 * np.arctan2(640, 2 * 386.5911865234375) * 180 / np.pi
-with open("cfg/boxes.json", "r") as r:
+with open("cfg/unif_box.json", "r") as r:
     box_cfg = json.load(r)
 # box_cfg = box_cfg[:3] + box_cfg[4:6] + [box_cfg[8]]
 # box_cfg = [box_cfg[8]]
@@ -311,7 +311,7 @@ for i in range(num_envs):
     current_run_dict[i]["vertices"] = []
     current_run_dict[i]["color"] = []
 
-    shuffle = np.random.choice(box_cfg, size=np.random.randint(20, 35), replace=True)
+    shuffle = np.random.choice(box_cfg, size=np.random.randint(30, 45), replace=True)
     for obj in shuffle:
         sizes = np.array(obj["dim"])
         current_run_dict[i]["sizes"].append(sizes)
@@ -461,6 +461,7 @@ obj_handle = [None] * num_envs
 objects_picked = 0
 dead_envs = np.array([False] * num_envs)
 view_matrix = None
+check_outside_frame = 100
 
 # Main simulation loop
 while True:
@@ -549,9 +550,10 @@ while True:
         # Check for exit condition - user closed the viewer window
         if gym.query_viewer_has_closed(viewer):
             break
-    if frame_count == 121:
+    if frame_count == check_outside_frame:
         for i in range(num_envs):
             # Check box inside bin
+            removed = False
             for handle in range(1, len(actor_handles[i])):
                 pose = gym.get_actor_rigid_body_states(
                     envs[i], actor_handles[i][handle], gymapi.STATE_ALL
@@ -571,7 +573,12 @@ while True:
                 tsfm = RigidTransform(rot_mat, pos)
                 pts = transform_pts((tsfm.matrix, current_run_dict[i]["vertices"][handle-1]))[:, :2]
                 if np.all(pts[:, 0] < min_point[0, 0]) or np.all(pts[:, 0] > max_point[0, 0]) or np.all(pts[:, 1] < min_point[0, 1]) or np.all(pts[:, 1] > max_point[0, 1]):
-                    remove_box(envs[i], actor_handles[i][handle])
+                    if not removed:
+                        remove_box(envs[i], actor_handles[i][handle])
+                        removed = True
+                    else:
+                        check_outside_frame += 5
+                        break
 
     if frame_count > 200 and frame_count < 1024:
         if frame_count < sideways_frame:
