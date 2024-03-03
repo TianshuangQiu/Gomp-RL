@@ -115,7 +115,7 @@ if not args.headless:
 
 # set up the env grid
 num_envs = args.num_envs
-spacing = 5
+spacing = 10
 num_per_row = int(sqrt(num_envs))
 env_lower = gymapi.Vec3(-spacing, 0.0, -spacing)
 env_upper = gymapi.Vec3(spacing, spacing, spacing)
@@ -311,7 +311,7 @@ for i in range(num_envs):
     current_run_dict[i]["vertices"] = []
     current_run_dict[i]["color"] = []
 
-    shuffle = np.random.choice(box_cfg, size=np.random.randint(30, 45), replace=True)
+    shuffle = np.random.choice(box_cfg, size=np.random.randint(20, 45), replace=True)
     for obj in shuffle:
         sizes = np.array(obj["dim"])
         current_run_dict[i]["sizes"].append(sizes)
@@ -474,7 +474,7 @@ while True:
     gym.render_all_camera_sensors(sim)
     # pdb.set_trace()
 
-    if frame_count > 0 :
+    if frame_count < 0 :
         for i in range(num_envs):
             # Get bin state
             state = gym.get_actor_rigid_body_states(
@@ -580,7 +580,7 @@ while True:
                         check_outside_frame += 5
                         break
 
-    if frame_count > 200 and frame_count < 1024:
+    if frame_count > 200 and frame_count < 2048:
         if frame_count < sideways_frame:
             for i, env in enumerate(envs):
                 if dead_envs[i]:
@@ -772,7 +772,7 @@ while True:
             objects_picked += 1
             obj_handle = [None] * num_envs
 
-    elif frame_count >= 1024:
+    elif frame_count >= 2048:
         # for i in range(num_envs):
         #     for j in range(0, 2):
         #         # Retrieve image data directly. Use this for Depth, Segmentation, and Optical Flow images
