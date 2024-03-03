@@ -298,6 +298,8 @@ with open("cfg/unif_box.json", "r") as r:
 # box_cfg = box_cfg[:3] + box_cfg[4:6] + [box_cfg[8]]
 # box_cfg = [box_cfg[8]]
 # create environments
+cam_tsfm_rand = np.random.normal(0, 0.01, size=3)
+cam_rot_randomness = np.random.normal(0, 0.01, size=3)
 for i in range(num_envs):
     actor_handles.append([])
     segmentation_id = 1
@@ -398,9 +400,9 @@ for i in range(num_envs):
     # position and target location are in the coordinate frame of the environment
     h1 = gym.create_camera_sensor(envs[i], camera_properties)
     camera_transform = gymapi.Transform()
-    camera_transform.p = gymapi.Vec3(-0.25 + np.random.normal(0, 0.01), 
-                                     0.29 + np.random.normal(0, 0.01), 
-                                     1.37 + np.random.normal(0, 0.01))
+    camera_transform.p = gymapi.Vec3(-0.25 + cam_tsfm_rand[0], 
+                                     0.29 + cam_tsfm_rand[1], 
+                                     1.37 + cam_tsfm_rand[2])
     calibrated_matrix = np.array(
                 [
                     # [0.999346, -0.001493, -0.036126],
@@ -411,11 +413,11 @@ for i in range(num_envs):
                     [0, 0.17364818, -0.98480775],
                 ]
             )
-    x_angle_rot = 0.17453294254604707 + np.random.normal(0, 0.01)
+    x_angle_rot = 0.17453294254604707 + cam_rot_randomness[0]
     rotation_matrix = (
         R.from_euler("x", x_angle_rot).as_matrix()
-        @ R.from_euler("z", -90 + np.random.normal(0, 1), degrees=True).as_matrix()
-        @ R.from_euler("y", 90 + np.random.normal(0, 1), degrees=True).as_matrix()
+        @ R.from_euler("z", -np.pi/2 + cam_rot_randomness[1]).as_matrix()
+        @ R.from_euler("y", np.pi/2 + cam_rot_randomness[2]).as_matrix()
         )
         
     
