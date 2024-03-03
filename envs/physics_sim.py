@@ -466,6 +466,9 @@ view_matrix = None
 check_outside_frame = 100
 
 # Main simulation loop
+removed_idx = []
+for i in range(num_envs):
+    removed_idx.append([])
 while True:
     # step the physics simulation
     gym.simulate(sim)
@@ -575,9 +578,12 @@ while True:
                 tsfm = RigidTransform(rot_mat, pos)
                 pts = transform_pts((tsfm.matrix, current_run_dict[i]["vertices"][handle-1]))[:, :2]
                 if np.all(pts[:, 0] < min_point[0, 0]) or np.all(pts[:, 0] > max_point[0, 0]) or np.all(pts[:, 1] < min_point[0, 1]) or np.all(pts[:, 1] > max_point[0, 1]):
+                    if actor_handles[i][handle] in removed_idx[i]:
+                        continue
                     if not removed:
                         remove_box(envs[i], actor_handles[i][handle])
                         removed = True
+                        removed_idx[i].append(actor_handles[i][handle])
                     else:
                         check_outside_frame += 5
                         break
