@@ -52,6 +52,16 @@ class NumpyEncoder(json.JSONEncoder):
             return float(obj)
         return json.JSONEncoder.default(self, obj)
 
+def visualize_segmentation(image_array, seg_list):
+    output = np.zeros(shape=(image_array.shape[0], image_array.shape[1], 3))
+    for i in range(image_array.shape[0]):
+        for j in range(image_array.shape[1]):
+            if image_array[i][j] > 0:
+                output[i][j] = seg_list[image_array[i][j]]
+            else:
+                output[i][j] = np.array([0, 0, 0])
+    return output
+
 
 current_run_dict = {"time": str(datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))}
 
@@ -62,8 +72,9 @@ gym = gymapi.acquire_gym()
 args = gymutil.parse_arguments(
     description="Graphics Example",
     headless=True,
-    custom_parameters=[],
+    custom_parameters=[{"name":"--num_envs", "type":int, "default":1}, {"name":"--prefix", "type":str, "default":""}],
 )
+os.makedirs(args.prefix, exist_ok=True)
 
 # get default params
 sim_params = gymapi.SimParams()
@@ -103,8 +114,8 @@ if not args.headless:
         raise ValueError("*** Failed to create viewer")
 
 # set up the env grid
-num_envs = 64
-spacing = 2.5
+num_envs = args.num_envs
+spacing = 10
 num_per_row = int(sqrt(num_envs))
 env_lower = gymapi.Vec3(-spacing, 0.0, -spacing)
 env_upper = gymapi.Vec3(spacing, spacing, spacing)
@@ -120,20 +131,14 @@ bin_options.fix_base_link = True
 bin_asset_file = "urdf/custom/cardboardbin.urdf"
 print("Loading asset '%s' from '%s'" % (bin_asset_file, asset_root))
 bin_asset = gym.load_asset(sim, asset_root, bin_asset_file, bin_options)
-bin_position = (0.0254, -0.55, 0)
+bin_position = (-0.308, 0.51, 0)
 bin_pose = gymapi.Transform()
 bin_pose.p = gymapi.Vec3(bin_position[0], bin_position[1], bin_position[2])
 bin_pose.r = gymapi.Quat.from_euler_zyx(0, 0, 0)
 
-# vase_asset_file = "urdf/custom/vase.urdf"
-# print("Loading asset '%s' from '%s'" % (vase_asset_file, asset_root))
-# vase_options = gymapi.AssetOptions()
-# vase_options.use_mesh_materials = True
-# vase_options.vhacd_enabled = True
-# vase_asset = gym.load_asset(sim, asset_root, vase_asset_file, vase_options)
-# v_pose = gymapi.Transform()
-# v_pose.p = gymapi.Vec3(0.0254, -0.55, 0.1)
-# v_pose.r = gymapi.Quat.from_euler_zyx(0, 0, 0)
+min_point = np.array([[-0.816, 0.2291]])
+max_point = np.array([[0.2,  0.7909]])
+
 
 
 def visualize_depth(image_array):
@@ -256,8 +261,20 @@ def h_downsample(pt_cloud, min_pt, max_pt):
             height_map[idx] = min_val
         else:
             height_map[idx] = np.max(heights)
-
+    np.nan_to_num(height_map, copy=False, nan=min_val)
     return height_map[::-1]
+
+def remove_box(env_handle, obj_handle):
+    print(f"Putting away {obj_handle}")
+    rm_state = gym.get_actor_rigid_body_states(
+        env_handle, obj_handle, gymapi.STATE_ALL
+    )
+    # pdb.set_trace()
+    rm_state["pose"]["p"].fill((-5, -5, 0.1))
+    rm_state["vel"]["linear"].fill((0, 0, 0))
+    gym.set_actor_rigid_body_states(
+        env_handle, obj_handle, rm_state, gymapi.STATE_ALL
+    )
 
 
 # Create environments
@@ -276,7 +293,7 @@ envs = []
 #     640,
 # )
 fov = 2 * np.arctan2(640, 2 * 386.5911865234375) * 180 / np.pi
-with open("cfg/boxes.json", "r") as r:
+with open("cfg/unif_box.json", "r") as r:
     box_cfg = json.load(r)
 # box_cfg = box_cfg[:3] + box_cfg[4:6] + [box_cfg[8]]
 # box_cfg = [box_cfg[8]]
@@ -294,8 +311,7 @@ for i in range(num_envs):
     current_run_dict[i]["vertices"] = []
     current_run_dict[i]["color"] = []
 
-    shuffle = np.random.choice(box_cfg, size=np.random.randint(10, 16))
-    # shuffle = np.random.choice(box_cfg, size=np.random.randint(1, 2))
+    shuffle = np.random.choice(box_cfg, size=np.random.randint(20, 45), replace=True)
     for obj in shuffle:
         sizes = np.array(obj["dim"])
         current_run_dict[i]["sizes"].append(sizes)
@@ -311,7 +327,7 @@ for i in range(num_envs):
     )
     actor_handles[i].append(bin_handle)
     bin_props = gym.get_actor_rigid_shape_properties(env, bin_handle)
-    bin_props[0].restitution = 0.1
+    bin_props[0].restitution = 0.05
     bin_props[0].compliance = 0.05
     gym.set_actor_rigid_shape_properties(env, bin_handle, bin_props)
     gym.set_rigid_body_color(
@@ -323,25 +339,10 @@ for i in range(num_envs):
     pose = gymapi.Transform()
     pose.p = gymapi.Vec3(0, 0, 0)
 
-    # Testing
-    # indicator = gym.create_box(sim, 0.05, 0.05, 0.05, bin_options)
-    # ind_tsfm = gymapi.Transform()
-    # ind_tsfm.p = gymapi.Vec3(-1.27103, -1.17050, 0.03)
-    # ind = gym.create_actor(
-    #     env,
-    #     indicator,
-    #     ind_tsfm,
-    #     "ind",
-    #     9,
-    # )
-    # gym.set_rigid_body_color(
-    #     env, ind, 0, gymapi.MESH_VISUAL_AND_COLLISION, gymapi.Vec3(0, 0, 0)
-    # )
-    # TESTING ENDS
 
     for count, box_size in enumerate(shuffle):
         if count % 3 == 0:
-            pose.p.z += 0.2 + 0.02 * np.random.random()
+            pose.p.z += 0.5 + 0.02 * np.random.random()
             pose.p.x = bin_position[0]
             pose.p.y = bin_position[1]
             # pose.p.y = bin_position[1] + 0.05 * np.random.normal()
@@ -354,12 +355,14 @@ for i in range(num_envs):
         pose.r = gymapi.Quat.from_euler_zyx(
             np.random.random() * 90, np.random.random() * 90, np.random.random() * 90
         )
+        box_options = gymapi.AssetOptions()
+        box_options.density = 100
         box = gym.create_box(
             sim,
             current_run_dict[i]["sizes"][count][0],
             current_run_dict[i]["sizes"][count][1],
             current_run_dict[i]["sizes"][count][2],
-            gymapi.AssetOptions(),
+            box_options,
         )
         box_ptr = gym.create_actor(
             env, box, pose, "box", i, segmentationId=segmentation_id
@@ -395,21 +398,27 @@ for i in range(num_envs):
     # position and target location are in the coordinate frame of the environment
     h1 = gym.create_camera_sensor(envs[i], camera_properties)
     camera_transform = gymapi.Transform()
-    camera_transform.p = gymapi.Vec3(-0.093956, -0.381233, 1.06595 + 0.36)
-    rotation_matrix = (
-        R.from_euler("z", 90, degrees=True).as_matrix()
-        @ R.from_euler("y", 90, degrees=True).as_matrix()
-        @ R.from_euler("x", 180, degrees=True).as_matrix()
-        @ np.linalg.inv(
-            np.array(
+    camera_transform.p = gymapi.Vec3(-0.25 + np.random.normal(0, 0.01), 
+                                     0.29 + np.random.normal(0, 0.01), 
+                                     1.37 + np.random.normal(0, 0.01))
+    calibrated_matrix = np.array(
                 [
-                    [0.999346, -0.001493, -0.036126],
-                    [-0.002240, -0.999785, -0.020626],
-                    [-0.036087, 0.020693, -0.999134],
+                    # [0.999346, -0.001493, -0.036126],
+                    # [-0.002240, -0.999785, -0.020626],
+                    # [-0.036087, 0.020693, -0.999134],
+                    [-1, 0, 0],
+                    [0, 0.98480775, 0.17364818],
+                    [0, 0.17364818, -0.98480775],
                 ]
             )
+    x_angle_rot = 0.17453294254604707 + np.random.normal(0, 0.01)
+    rotation_matrix = (
+        R.from_euler("x", x_angle_rot).as_matrix()
+        @ R.from_euler("z", -90 + np.random.normal(0, 1), degrees=True).as_matrix()
+        @ R.from_euler("y", 90 + np.random.normal(0, 1), degrees=True).as_matrix()
         )
-    )
+        
+    
     tf = RigidTransform(rotation_matrix)
     quat = tf.quaternion
     camera_transform.r = gymapi.Quat(quat[1], quat[2], quat[3], quat[0])
@@ -439,11 +448,11 @@ for i in range(num_envs):
 
 if os.path.exists("graphics_images"):
     shutil.rmtree("graphics_images")
-    os.mkdir("graphics_images")
+os.mkdir("graphics_images")
 
-# if os.path.exists("poses"):
-#     shutil.rmtree("poses")
-#     os.mkdir("poses")
+
+os.makedirs(f"{args.prefix}/poses", exist_ok=True)
+os.makedirs(f"{args.prefix}/depth", exist_ok=True)
 
 frame_count = 0
 
@@ -452,6 +461,7 @@ obj_handle = [None] * num_envs
 objects_picked = 0
 dead_envs = np.array([False] * num_envs)
 view_matrix = None
+check_outside_frame = 100
 
 # Main simulation loop
 while True:
@@ -462,14 +472,16 @@ while True:
     gym.step_graphics(sim)
     # render the camera sensors
     gym.render_all_camera_sensors(sim)
+    # pdb.set_trace()
 
-    if frame_count < 0 or frame_count == -1:
+    if frame_count < 0 :
         for i in range(num_envs):
+            # Get bin state
             state = gym.get_actor_rigid_body_states(
                 envs[i], actor_handles[i][0], gymapi.STATE_ALL
             )
             original_position = state["pose"]["p"].copy()
-            state["pose"]["p"].fill((5, 5, 5))
+            state["pose"]["p"].fill((2.5, 2.5, 5))
             if not gym.set_actor_rigid_body_states(
                 envs[i], actor_handles[i][0], state, gymapi.STATE_ALL
             ):
@@ -507,7 +519,7 @@ while True:
                 )
             depth_image = gym.get_camera_image(
                 sim, envs[i], camera_handles[i][0], gymapi.IMAGE_DEPTH
-            )[200:, 100:]
+            )
             seg_image = gym.get_camera_image(
                 sim, envs[i], camera_handles[i][0], gymapi.IMAGE_SEGMENTATION
             )
@@ -538,10 +550,38 @@ while True:
         # Check for exit condition - user closed the viewer window
         if gym.query_viewer_has_closed(viewer):
             break
+    if frame_count == check_outside_frame:
+        for i in range(num_envs):
+            # Check box inside bin
+            removed = False
+            for handle in range(1, len(actor_handles[i])):
+                pose = gym.get_actor_rigid_body_states(
+                    envs[i], actor_handles[i][handle], gymapi.STATE_ALL
+                )["pose"]
+                pos = np.array(
+                        [pose["p"]["x"], pose["p"]["y"], pose["p"]["z"]]
+                    ).reshape(3)
+                rot = np.array(
+                    [
+                        pose["r"]["w"],
+                        pose["r"]["x"],
+                        pose["r"]["y"],
+                        pose["r"]["z"],
+                    ]
+                ).reshape(4)
+                rot_mat = RigidTransform.rotation_from_quaternion(rot)
+                tsfm = RigidTransform(rot_mat, pos)
+                pts = transform_pts((tsfm.matrix, current_run_dict[i]["vertices"][handle-1]))[:, :2]
+                if np.all(pts[:, 0] < min_point[0, 0]) or np.all(pts[:, 0] > max_point[0, 0]) or np.all(pts[:, 1] < min_point[0, 1]) or np.all(pts[:, 1] > max_point[0, 1]):
+                    if not removed:
+                        remove_box(envs[i], actor_handles[i][handle])
+                        removed = True
+                    else:
+                        check_outside_frame += 5
+                        break
 
-    if frame_count > 200 and objects_picked < 20:
+    if frame_count > 200 and frame_count < 2048:
         if frame_count < sideways_frame:
-            print("lifting")
             for i, env in enumerate(envs):
                 if dead_envs[i]:
                     continue
@@ -612,82 +652,98 @@ while True:
                 pt_cloud = deproject_point(
                     640,
                     480,
-                    p_list[200:, 100:].reshape((-1, 2)),
-                    depth_image[200:, 100:],
+                    p_list.reshape((-1, 2)),
+                    depth_image,
                     seg_image,
                     view_matrix,
                     projection_matrix,
                     none_okay=False,
                 )
-                pt_cloud += np.array([[0, 0, -0.40]])
+                pt_cloud += np.array([[0, 0, -0.34]])
 
                 # max_point = pt_cloud[639, :-1]
                 # min_point = pt_cloud[479 * 640, :-1]
-                min_point = np.array([[-0.5133333333333333, -0.9600000000000001]])
-                max_point = np.array([[0.5533333333333333, -0.16000000000000003]])
                 header = (
                     np.array2string(
-                        min_point,
+                        -max_point,
                         formatter={"float_kind": lambda x: "%10.5f" % x},
                     )[2:-2]
                     + "\n"
                     + np.array2string(
-                        max_point,
+                        -min_point,
                         formatter={"float_kind": lambda x: "%10.5f" % x},
                     )[2:-2]
                     + "\n"
                     + "   30\n   40"
                 )
                 write_depth = h_downsample(pt_cloud, min_point, max_point)
-                cropped_seg = seg_image[200:, 100:]
-                valid_pixels = np.where(cropped_seg > 1)
+                valid_pixels = np.where(seg_image > 1)
                 num_valid = len(valid_pixels[0])
                 if num_valid == 0:
                     dead_envs[i] = True
                     break
                 else:
-                    randint = np.random.randint(0, num_valid)
-                    pixel = (valid_pixels[0][randint], valid_pixels[1][randint])
+                    valid_pixel_array = np.vstack(valid_pixels).T
+                    valid_point_idx = np.ravel_multi_index(np.vstack(valid_pixels),(480,640))
+                    pt_cloud_valid = pt_cloud[valid_point_idx]
+                    top_pt = np.argmax(pt_cloud_valid[:, 2])
+                    # Depth and RGB are flipped
+                    pixel = valid_pixel_array[top_pt]
+                    pixel = (pixel[0], pixel[1])
 
                 # seg ID starts at 1, bin takes up a spot
-                target_obj_idx = cropped_seg[pixel] - 2
+                print(f"top box found at {pixel}, targeting {seg_image[pixel] - 2}")
+                target_obj_idx = seg_image[pixel] - 2
+                # segmentation_colors = []
+                # for tmp in range(np.max(seg_image) + 2):
+                #     if tmp == seg_image[pixel]:
+                #         segmentation_colors.append(np.array([0, 0.5, 0.9]))
+                #     else:
+                #         segmentation_colors.append(np.array([1, 1 ,0]))
+                # vis_seg = visualize_segmentation(seg_image, segmentation_colors) * 256
+                # # Convert to a pillow image and write it to disk
+                # vis_seg_image = im.fromarray(vis_seg.astype(np.uint8), mode="RGB")
+                # vis_seg_image.save(
+                #     f"seg_env{i}_cam{j}_frame{str(frame_count).zfill(4)}.jpg"
+                # )
+                # pdb.set_trace()
 
-                # pos = pt_cloud[pixel[0] * 640 + pixel[1]]
-                pos = pt_cloud[pixel[0] * 540 + pixel[1]]
-                gym.apply_body_force_at_pos(
+                pos = pt_cloud_valid[top_pt]
+                # pos = pt_cloud[pixel[0] * 540 + pixel[1]]
+                gym.apply_body_forces(
                     env,
-                    actor_handles[i][target_obj_idx],
-                    gymapi.Vec3(0, 0, 75),
-                    gymapi.Vec3(pos[0, 0], pos[0, 1], pos[0, 2]),
+                    actor_handles[i][target_obj_idx+1],
+                    gymapi.Vec3(0, 0, 70),
+                    None,
                     gymapi.ENV_SPACE,
                 )
-                obj_handle[i] = actor_handles[i][target_obj_idx]
+                obj_handle[i] = actor_handles[i][target_obj_idx+1]
 
                 sideways_frame = frame_count + 100
 
                 ##SAVE SHIT BEGINS HERE###
                 np.savetxt(
-                    "depth/orth" + curr_time + f"_env{i}_frame{frame_count}.txt",
-                    write_depth,
+                    f"{args.prefix}/depth/{args.prefix}_" + curr_time + f"_env{i}_frame{frame_count}.depth",
+                    write_depth[::-1, ::-1] + np.random.normal(0, 0.01, write_depth.shape),
                     fmt="%10.5f",
                     header=header,
                     comments="",
                 )
+               
                 np.savetxt(
-                    "poses/pt" + curr_time + f"_env{i}_frame{frame_count}.txt",
+                    f"{args.prefix}/poses/{args.prefix}_" + curr_time + f"_env{i}_frame{frame_count}.vert",
                     transform_pts(
                         (
                             current_run_dict[i]["poses"][target_obj_idx],
                             current_run_dict[i]["vertices"][target_obj_idx],
                         )
-                    )
-                    + np.array([0, 0, -0.40]),
+                    ) * np.array([-1, -1, 1])
+                    + np.array([0, 0, -0.34]),
                     fmt="%10.5f",
                     header="   8 3",
                     footer=current_run_dict[i]["alias"][target_obj_idx],
                     comments="",
                 )
-
                 # with open(
                 #     "logs/run_" + curr_time + f"_env{i}_frame{frame_count}.json",
                 #     "w",
@@ -697,25 +753,26 @@ while True:
                 del pt_cloud
 
         elif sideways_frame == frame_count:
+            # Putting obj aside
             for i, env in enumerate(envs):
                 if obj_handle[i] is not None:
+                    print(f"Putting away {obj_handle[i]}")
                     rm_state = gym.get_actor_rigid_body_states(
                         envs[i], obj_handle[i], gymapi.STATE_ALL
                     )
                     # pdb.set_trace()
-                    if rm_state["pose"]["p"]["z"] > 1:
-                        rm_state["pose"]["p"].fill((-2, -2, 1))
-                        rm_state["vel"]["linear"].fill((0, 0, 0))
-                        gym.set_actor_rigid_body_states(
-                            envs[i], obj_handle[i], rm_state, gymapi.STATE_ALL
-                        )
+                    rm_state["pose"]["p"].fill((-2.5, -2.5, 0.7))
+                    rm_state["vel"]["linear"].fill((0, 0, 0))
+                    gym.set_actor_rigid_body_states(
+                        envs[i], obj_handle[i], rm_state, gymapi.STATE_ALL
+                    )
 
         else:
             sideways_frame = -1
             objects_picked += 1
             obj_handle = [None] * num_envs
 
-    elif objects_picked >= 5:
+    elif frame_count >= 2048:
         # for i in range(num_envs):
         #     for j in range(0, 2):
         #         # Retrieve image data directly. Use this for Depth, Segmentation, and Optical Flow images
@@ -746,7 +803,7 @@ while True:
 
     frame_count = frame_count + 1
 
-    print(frame_count, datetime.now())
+    # print(frame_count, datetime.now())
 
 # with open(
 #     "poses/run_" + datetime.now().strftime("%Y-%m-%d-%H-%M-%S") + ".json", "w"
